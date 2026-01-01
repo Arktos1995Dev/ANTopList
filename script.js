@@ -1,7 +1,208 @@
 document.addEventListener('DOMContentLoaded', async () => {
     await fetchVersion();
+    checkAuthState();
 });
 
+// ... (rest of the existing code) ...
+
+// --- Authentication --- //
+
+const loginBtn = document.getElementById('loginBtn');
+const registerBtn = document.getElementById('registerBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const saveListBtn = document.getElementById('saveListBtn');
+const authModal = document.getElementById('authModal');
+const closeModalBtn = document.getElementById('closeModalBtn');
+const showRegisterLink = document.getElementById('showRegisterLink');
+const showLoginLink = document.getElementById('showLoginLink');
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
+const loginSubmit = document.getElementById('loginSubmit');
+const registerSubmit = document.getElementById('registerSubmit');
+const userInfo = document.getElementById('userInfo');
+const usernameDisplay = document.getElementById('usernameDisplay');
+
+loginBtn.addEventListener('click', () => {
+    authModal.style.display = 'block';
+    loginForm.style.display = 'block';
+    registerForm.style.display = 'none';
+    showLoginLink.style.display = 'none';
+    showRegisterLink.style.display = 'block';
+
+});
+
+registerBtn.addEventListener('click', () => {
+    authModal.style.display = 'block';
+    loginForm.style.display = 'none';
+    registerForm.style.display = 'block';
+    showLoginLink.style.display = 'block';
+    showRegisterLink.style.display = 'none';
+});
+
+closeModalBtn.addEventListener('click', () => {
+    authModal.style.display = 'none';
+});
+
+window.addEventListener('click', (event) => {
+    if (event.target == authModal) {
+        authModal.style.display = 'none';
+    }
+});
+
+showRegisterLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    loginForm.style.display = 'none';
+    registerForm.style.display = 'block';
+    showLoginLink.style.display = 'block';
+    showRegisterLink.style.display = 'none';
+});
+
+showLoginLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    registerForm.style.display = 'none';
+    loginForm.style.display = 'block';
+    showRegisterLink.style.display = 'block';
+    showLoginLink.style.display = 'none';
+});
+
+registerSubmit.addEventListener('click', async () => {
+    const username = document.getElementById('registerUsername').value;
+    const password = document.getElementById('registerPassword').value;
+
+    try {
+        const response = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        const data = await response.json();
+        alert(data.message);
+        if (response.ok) {
+            authModal.style.display = 'none';
+        }
+    } catch (error) {
+        alert('Registration failed.');
+    }
+});
+
+loginSubmit.addEventListener('click', async () => {
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+
+    try {
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('username', username);
+            updateUIForAuth(username);
+            authModal.style.display = 'none';
+            loadUserList();
+        } else {
+            alert(data.message);
+        }
+    } catch (error) {
+        alert('Login failed.');
+    }
+});
+
+logoutBtn.addEventListener('click', () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    updateUIForGuest();
+});
+
+saveListBtn.addEventListener('click', async () => {
+    if (!workbook || !currentSheetName) {
+        alert('No list to save.');
+        return;
+    }
+
+    const token = localStorage.getItem('token');
+    const worksheet = workbook.Sheets[currentSheetName];
+    const listData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    try {
+        const response = await fetch('/api/list', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': token
+            },
+            body: JSON.stringify({ list: listData })
+        });
+        const data = await response.json();
+        alert(data.message);
+    } catch (error) {
+        alert('Failed to save list.');
+    }
+});
+
+function checkAuthState() {
+    const token = localStorage.getItem('token');
+    const username = localStorage.getItem('username');
+    if (token && username) {
+        updateUIForAuth(username);
+        loadUserList();
+    } else {
+        updateUIForGuest();
+    }
+}
+
+function updateUIForAuth(username) {
+    loginBtn.style.display = 'none';
+    registerBtn.style.display = 'none';
+    userInfo.style.display = 'block';
+    usernameDisplay.textContent = username;
+    saveListBtn.style.display = 'block';
+}
+
+function updateUIForGuest() {
+    loginBtn.style.display = 'block';
+    registerBtn.style.display = 'block';
+    userInfo.style.display = 'none';
+    usernameDisplay.textContent = '';
+    saveListBtn.style.display = 'none';
+}
+
+async function loadUserList() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+        const response = await fetch('/api/list', {
+            headers: { 'Authorization': token }
+        });
+        if (response.ok) {
+            const listData = await response.json();
+            if (listData && listData.length > 0) {
+                const worksheet = XLSX.utils.aoa_to_sheet(listData);
+                workbook = XLSX.utils.book_new();
+                const sheetName = 'My Saved List';
+                XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+                currentSheetName = sheetName;
+                sheetSelect.innerHTML = `<option value="${currentSheetName}">${currentSheetName}</option>`;
+
+                controlsSection.style.display = 'flex';
+                dataSection.style.display = 'block';
+                infoSection.style.display = 'block';
+                uploadBox.style.display = 'none';
+
+                updateInfo();
+                renderData();
+                initiateImageDownloads();
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load user list:', error);
+    }
+}
 async function fetchVersion() {
     try {
         const response = await fetch('/api/version');
@@ -417,3 +618,4 @@ function showGenreColorHint(show) {
         genreHint.style.display = show ? 'flex' : 'none';
     }
 }
+

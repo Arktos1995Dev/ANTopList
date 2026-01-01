@@ -12,6 +12,14 @@
         <header class="header">
             <h1>📊 Визуализация Excel документа</h1>
             <p class="subtitle">Загрузите ваш Excel файл для красивой визуализации</p>
+            <div class="auth-section">
+                <button id="loginBtn">Войти</button>
+                <button id="registerBtn">Регистрация</button>
+                <div id="userInfo" style="display: none;">
+                    <span id="usernameDisplay"></span>
+                    <button id="logoutBtn">Выйти</button>
+                </div>
+            </div>
         </header>
 
         <div class="upload-section">
@@ -41,6 +49,7 @@
                 <button class="btn-toggle" data-view="cards">Карточки</button>
             </div>
             <button id="hideImagesButton" class="btn-toggle">Hide Images</button> 
+            <button id="saveListBtn" class="btn-toggle" style="display: none;">Сохранить список</button>
         </div>
 
         <div class="genre-hint" id="genreHint" style="display: none;">
@@ -74,6 +83,29 @@
                     <span class="info-value" id="colCount">0</span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Auth Modal -->
+    <div id="authModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-btn" id="closeModalBtn">&times;</span>
+            <div id="loginForm">
+                <h2>Вход</h2>
+                <input type="text" id="loginUsername" placeholder="Имя пользователя">
+                <input type="password" id="loginPassword" placeholder="Пароль">
+                <button id="loginSubmit">Войти</button>
+            </div>
+            <div id="registerForm" style="display:none;">
+                <h2>Регистрация</h2>
+                <input type="text" id="registerUsername" placeholder="Имя пользователя">
+                <input type="password" id="registerPassword" placeholder="Пароль">
+                <button id="registerSubmit">Зарегистрироваться</button>
+            </div>
+            <p class="form-toggle-link">
+                <a href="#" id="showRegisterLink">Нет аккаунта? Зарегистрируйтесь</a>
+                <a href="#" id="showLoginLink" style="display:none;">Уже есть аккаунт? Войдите</a>
+            </p>
         </div>
     </div>
 

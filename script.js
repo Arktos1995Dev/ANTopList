@@ -20,7 +20,7 @@ const registerForm = document.getElementById('registerForm');
 const loginSubmit = document.getElementById('loginSubmit');
 const registerSubmit = document.getElementById('registerSubmit');
 const userInfo = document.getElementById('userInfo');
-const usernameDisplay = document.getElementById('usernameDisplay');
+const profileLink = document.getElementById('profileLink');
 
 loginBtn.addEventListener('click', () => {
     authModal.style.display = 'block';
@@ -28,7 +28,6 @@ loginBtn.addEventListener('click', () => {
     registerForm.style.display = 'none';
     showLoginLink.style.display = 'none';
     showRegisterLink.style.display = 'block';
-
 });
 
 registerBtn.addEventListener('click', () => {
@@ -117,6 +116,11 @@ logoutBtn.addEventListener('click', () => {
     updateUIForGuest();
 });
 
+profileLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    loadUserList();
+});
+
 saveListBtn.addEventListener('click', async () => {
     if (!workbook || !currentSheetName) {
         alert('No list to save.');
@@ -157,8 +161,8 @@ function checkAuthState() {
 function updateUIForAuth(username) {
     loginBtn.style.display = 'none';
     registerBtn.style.display = 'none';
-    userInfo.style.display = 'block';
-    usernameDisplay.textContent = username;
+    userInfo.style.display = 'flex';
+    profileLink.textContent = username;
     saveListBtn.style.display = 'block';
 }
 
@@ -166,7 +170,7 @@ function updateUIForGuest() {
     loginBtn.style.display = 'block';
     registerBtn.style.display = 'block';
     userInfo.style.display = 'none';
-    usernameDisplay.textContent = '';
+    profileLink.textContent = '';
     saveListBtn.style.display = 'none';
 }
 

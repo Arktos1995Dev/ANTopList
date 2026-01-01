@@ -35,6 +35,7 @@ body {
     text-align: center;
     margin-bottom: 40px;
     color: var(--text-primary);
+    position: relative;
 }
 
 .header h1 {
@@ -291,12 +292,10 @@ body {
 }
 
 .data-table tbody tr.genre-row:nth-child(even) {
-    /* Переопределяем для строк с genre, сохраняем базовый цвет если нет genre */
     background: inherit;
 }
 
 .data-table tbody tr.genre-row:hover {
-    /* При наведении делаем цвет немного темнее, переопределяем hover из общей таблицы */
     background: inherit !important;
     filter: brightness(0.95);
 }
@@ -367,7 +366,6 @@ body {
 }
 
 .card.genre-card:hover {
-    /* При наведении на карточку с genre делаем цвет немного темнее */
     filter: brightness(0.95);
 }
 
@@ -560,7 +558,6 @@ body {
     }
 }
 
-/* Drag and Drop Styles */
 .drag-handle {
     cursor: move;
     cursor: -webkit-grabbing;
@@ -589,7 +586,6 @@ body {
     font-size: 1.5rem;
 }
 
-/* User Actions Section */
 .user-actions-section {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -655,3 +651,198 @@ body {
     background: var(--primary-dark);
 }
 
+/* Image Hiding Styles */
+body.hide-images .image-col-header,
+body.hide-images .image-col {
+    display: none;
+}
+
+body.hide-images .card-image-wrapper {
+    display: none;
+}
+
+/* --- Auth Section Styles --- */
+.auth-section {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: flex;
+    gap: 10px;
+}
+
+#loginBtn, #registerBtn, #logoutBtn {
+    padding: 8px 16px;
+    border: 2px solid var(--primary-color);
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+#loginBtn {
+    background: var(--primary-color);
+    color: white;
+}
+#loginBtn:hover {
+     background: var(--primary-dark);
+     border-color: var(--primary-dark);
+}
+
+#registerBtn {
+    background: transparent;
+    color: var(--primary-color);
+}
+#registerBtn:hover {
+    background: var(--hover-color);
+}
+
+#userInfo {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+#profileLink {
+    padding: 8px 16px;
+    border: 2px solid var(--secondary-color);
+    border-radius: 8px;
+    font-weight: 600;
+    color: var(--secondary-color);
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+#profileLink:hover {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+
+#logoutBtn {
+    background: #ef4444;
+    color: white;
+    border-color: #ef4444;
+}
+#logoutBtn:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+}
+
+/* --- Auth Modal Styles --- */
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(30, 41, 59, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.modal[style*="display: block;"] {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-content {
+    background-color: var(--surface);
+    margin: auto;
+    padding: 30px;
+    width: 90%;
+    max-width: 400px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    position: relative;
+    text-align: center;
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+}
+
+.modal[style*="display: block;"] .modal-content {
+    transform: scale(1);
+}
+
+.close-btn {
+    color: #aaa;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    font-size: 28px;
+    font-weight: bold;
+    transition: color 0.2s;
+}
+
+.close-btn:hover,
+.close-btn:focus {
+    color: var(--text-primary);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+#loginForm h2, #registerForm h2 {
+    margin-bottom: 20px;
+    color: var(--text-primary);
+}
+
+#authModal input[type="text"],
+#authModal input[type="password"] {
+    width: 100%;
+    padding: 12px 15px;
+    margin: 8px 0;
+    display: inline-block;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-size: 1rem;
+    transition: all 0.2s;
+}
+
+#authModal input[type="text"]:focus,
+#authModal input[type="password"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+#loginSubmit, #registerSubmit {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 14px 20px;
+    margin: 20px 0 15px;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    box-shadow: var(--shadow);
+}
+
+#loginSubmit:hover, #registerSubmit:hover {
+    background-color: var(--primary-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+}
+
+.form-toggle-link {
+    margin-top: 15px;
+}
+
+.form-toggle-link a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.form-toggle-link a:hover {
+    text-decoration: underline;
+}

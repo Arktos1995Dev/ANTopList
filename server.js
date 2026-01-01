@@ -1,70 +1,52 @@
-const http = require('http');
-const fs = require('fs');
+const express = require('express');
+const cors = require('cors');
 const path = require('path');
-const url = require('url');
+const fs = require('fs');
+const { processAndDownloadImages } = require('./download-images.js');
 
-const PORT = 8000;
-const PUBLIC_DIR = __dirname;
+const app = express();
+const PORT = process.env.PORT || 8000;
 
-const mimeTypes = {
-    '.html': 'text/html',
-    '.js': 'text/javascript',
-    '.css': 'text/css',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    '.xls': 'application/vnd.ms-excel'
-};
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname))); // Serve static files from the root directory
+app.use('/images', express.static(path.join(__dirname, 'images'))); // Serve images
 
-const server = http.createServer((req, res) => {
-    const parsedUrl = url.parse(req.url);
-    let pathname = parsedUrl.pathname;
-    
-    // Убираем ведущий слэш
-    if (pathname.startsWith('/')) {
-        pathname = pathname.substring(1);
-    }
-    
-    // Если корневой путь, показываем index.html
-    if (pathname === '' || pathname === '/') {
-        pathname = 'index.html';
-    }
-    
-    const filePath = path.join(PUBLIC_DIR, pathname);
-    
-    // Проверяем существование файла
-    fs.access(filePath, fs.constants.F_OK, (err) => {
-        if (err) {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('404 Not Found');
-            return;
+// Get app version from package.json
+let appVersion = 'unknown';
+try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    appVersion = packageJson.version || 'unknown';
+} catch (error) {
+    console.error('Could not read app version from package.json:', error);
+}
+
+// API Routes
+app.get('/api/version', (req, res) => {
+    res.json({ version: appVersion });
+});
+
+app.post('/download-images', async (req, res) => {
+    try {
+        const { animeTitles } = req.body;
+        if (!Array.isArray(animeTitles)) {
+            return res.status(400).json({ message: 'animeTitles must be an array' });
         }
-        
-        // Читаем файл
-        fs.readFile(filePath, (err, data) => {
-            if (err) {
-                res.writeHead(500, { 'Content-Type': 'text/plain' });
-                res.end('500 Internal Server Error');
-                return;
-            }
-            
-            // Определяем MIME тип
-            const ext = path.extname(filePath).toLowerCase();
-            const contentType = mimeTypes[ext] || 'application/octet-stream';
-            
-            res.writeHead(200, { 'Content-Type': contentType });
-            res.end(data);
-        });
-    });
+        const downloadedFiles = await processAndDownloadImages(animeTitles);
+        res.json(downloadedFiles);
+    } catch (error) {
+        console.error('Error processing download request:', error);
+        res.status(500).json({ message: 'Internal Server Error', error: error.message });
+    }
 });
 
-server.listen(PORT, () => {
-    console.log(`Сервер запущен на http://localhost:${PORT}`);
-    console.log(`Откройте в браузере: http://localhost:${PORT}`);
+// Serve the main HTML file
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Start the server
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+});

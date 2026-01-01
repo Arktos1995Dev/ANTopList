@@ -16,6 +16,10 @@
 
         <div class="upload-section">
             <div class="upload-box" id="uploadBox">
+                 <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Загрузка изображений...</p>
+                </div>
                 <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="7 10 12 15 17 10"></polyline>
@@ -35,12 +39,6 @@
             <div class="view-toggle">
                 <button class="btn-toggle active" data-view="table">Таблица</button>
                 <button class="btn-toggle" data-view="cards">Карточки</button>
-            </div>
-            <div class="image-controls" id="imageControls" style="display: none;">
-                <button id="loadImagesBtn" class="btn-load-images">
-                    <span class="btn-icon">🖼️</span>
-                    <span class="btn-text">Загрузить изображения</span>
-                </button>
             </div>
         </div>
 
@@ -78,7 +76,10 @@
         </div>
     </div>
 
+    <footer class="footer">
+        <p id="version-info">Загрузка...</p>
+    </footer>
+
     <script src="script.js"></script>
 </body>
 </html>
-

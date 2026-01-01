@@ -2,18 +2,14 @@
   "name": "anime-image-downloader",
   "version": "1.0.0",
   "description": "Скачивание изображений аниме из Excel файла",
-  "main": "download-images.js",
+  "main": "server.js",
   "scripts": {
-    "download": "node download-images.js",
-    "server": "node server.js",
-    "start": "firebase emulators:start --only hosting",
-    "deploy": "firebase deploy --only hosting"
+    "start": "node server.js"
   },
   "dependencies": {
-    "xlsx": "^0.18.5"
-  },
-  "devDependencies": {
-    "firebase-tools": "^13.0.2"
+    "xlsx": "^0.18.5",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
   },
   "engines": {
     "node": ">=14.0.0"

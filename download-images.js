@@ -2,11 +2,36 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
 
 const imagesDir = path.join(__dirname, 'images');
 if (!fs.existsSync(imagesDir)) {
     fs.mkdirSync(imagesDir, { recursive: true });
 }
+
+async function createImageTable() {
+    const client = await pool.connect();
+    try {
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS images (
+                id SERIAL PRIMARY KEY,
+                title TEXT UNIQUE NOT NULL,
+                filename TEXT NOT NULL
+            )
+        `);
+    } finally {
+        client.release();
+    }
+}
+
+createImageTable();
 
 function downloadFile(url, filepath) {
     return new Promise((resolve, reject) => {
@@ -108,25 +133,40 @@ function sanitizeFileName(name) {
 async function processAndDownloadImages(animeTitles) {
     console.log(`Starting download for ${animeTitles.length} unique anime titles.`);
     const downloadedFiles = {};
-    for (const animeTitle of animeTitles) {
-        console.log(`Processing: "${animeTitle}"...`);
-        const imageUrl = await fetchAnimeImageWithAlternatives(animeTitle);
-        if (!imageUrl) {
-            console.log(`Image not found for "${animeTitle}"`);
-            continue;
+    const client = await pool.connect();
+    try {
+        for (const animeTitle of animeTitles) {
+            console.log(`Processing: "${animeTitle}"...`);
+
+            const dbResult = await client.query('SELECT filename FROM images WHERE title = $1', [animeTitle]);
+            if (dbResult.rows.length > 0) {
+                downloadedFiles[animeTitle] = dbResult.rows[0].filename;
+                console.log(`Found in DB: ${dbResult.rows[0].filename}`);
+                continue;
+            }
+
+            const imageUrl = await fetchAnimeImageWithAlternatives(animeTitle);
+            if (!imageUrl) {
+                console.log(`Image not found for "${animeTitle}"`);
+                continue;
+            }
+            const safeName = sanitizeFileName(animeTitle);
+            const ext = path.extname(new URL(imageUrl).pathname) || '.jpg';
+            const filename = `${safeName}${ext}`;
+            const filepath = path.join(imagesDir, filename);
+            try {
+                await downloadFile(imageUrl, filepath);
+                await client.query('INSERT INTO images (title, filename) VALUES ($1, $2)', [animeTitle, filename]);
+                downloadedFiles[animeTitle] = filename;
+                console.log(`Downloaded: ${filename}`);
+            } catch (error) {
+                console.error(`Failed to download file for "${animeTitle}" from ${imageUrl}: ${error.message}`);
+            }
         }
-        const safeName = sanitizeFileName(animeTitle);
-        const ext = path.extname(new URL(imageUrl).pathname) || '.jpg';
-        const filename = `${safeName}${ext}`;
-        const filepath = path.join(imagesDir, filename);
-        try {
-            await downloadFile(imageUrl, filepath);
-            downloadedFiles[animeTitle] = filename;
-            console.log(`Downloaded: ${filename}`);
-        } catch (error) {
-            console.error(`Failed to download file for "${animeTitle}" from ${imageUrl}: ${error.message}`);
-        }
+    } finally {
+        client.release();
     }
+
     if (Object.keys(downloadedFiles).length > 0) {
         fs.writeFileSync(path.join(__dirname, 'image-mapping.json'), JSON.stringify(downloadedFiles, null, 2));
         console.log('Image mapping file created.');

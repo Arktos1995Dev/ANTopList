@@ -43,6 +43,8 @@ const colCountEl = document.getElementById('colCount');
 const genreHint = document.getElementById('genreHint');
 const loadingIndicator = document.getElementById('loadingIndicator');
 const hideImagesButton = document.getElementById('hideImagesButton');
+const loadMalListButton = document.getElementById('loadMalList');
+const malUsernameInput = document.getElementById('malUsername');
 
 // Event listeners
 uploadBox.addEventListener('click', () => fileInput.click());
@@ -50,6 +52,7 @@ uploadBox.addEventListener('dragover', (e) => { e.preventDefault(); uploadBox.cl
 uploadBox.addEventListener('dragleave', (e) => { e.preventDefault(); uploadBox.classList.remove('dragover'); });
 uploadBox.addEventListener('drop', handleDrop);
 fileInput.addEventListener('change', handleFileSelect);
+loadMalListButton.addEventListener('click', handleMalListLoad);
 
 hideImagesButton.addEventListener('click', () => {
     imagesHidden = !imagesHidden;
@@ -86,6 +89,55 @@ function handleFileSelect(e) {
     const file = e.target.files[0];
     if (file) {
         processFile(file);
+    }
+}
+
+async function handleMalListLoad() {
+    const username = malUsernameInput.value.trim();
+    if (!username) {
+        alert('Please enter a MyAnimeList username.');
+        return;
+    }
+
+    if(loadingIndicator) loadingIndicator.style.display = 'flex';
+
+    try {
+        const response = await fetch('/api/mal-list', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.statusText}`);
+        }
+
+        localImageMapping = await response.json();
+        console.log('Image mapping received from server:', localImageMapping);
+
+        const animeTitles = Object.keys(localImageMapping);
+        const jsonData = [['Anime'], ...animeTitles.map(title => [title])];
+        
+        // Create a fake workbook and sheet
+        workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.aoa_to_sheet(jsonData);
+        XLSX.utils.book_append_sheet(workbook, worksheet, "MyAnimeList");
+
+        currentSheetName = "MyAnimeList";
+        sheetSelect.innerHTML = `<option value="${currentSheetName}">${currentSheetName}</option>`;
+
+        controlsSection.style.display = 'flex';
+        dataSection.style.display = 'block';
+        infoSection.style.display = 'block';
+        uploadBox.style.display = 'none';
+
+        updateInfo();
+        await renderData();
+
+    } catch (error) {
+        console.error('Error loading MAL list:', error);
+    } finally {
+        if(loadingIndicator) loadingIndicator.style.display = 'none';
     }
 }
 

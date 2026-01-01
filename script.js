@@ -27,6 +27,7 @@ let workbook = null;
 let currentSheetName = null;
 let currentView = 'table';
 let localImageMapping = {}; // Маппинг для локальных изображений, полученный с сервера
+let imagesHidden = false;
 
 const uploadBox = document.getElementById('uploadBox');
 const fileInput = document.getElementById('fileInput');
@@ -41,6 +42,7 @@ const rowCountEl = document.getElementById('rowCount');
 const colCountEl = document.getElementById('colCount');
 const genreHint = document.getElementById('genreHint');
 const loadingIndicator = document.getElementById('loadingIndicator');
+const hideImagesButton = document.getElementById('hideImagesButton');
 
 // Event listeners
 uploadBox.addEventListener('click', () => fileInput.click());
@@ -49,9 +51,15 @@ uploadBox.addEventListener('dragleave', (e) => { e.preventDefault(); uploadBox.c
 uploadBox.addEventListener('drop', handleDrop);
 fileInput.addEventListener('change', handleFileSelect);
 
-document.querySelectorAll('.btn-toggle').forEach(btn => {
+hideImagesButton.addEventListener('click', () => {
+    imagesHidden = !imagesHidden;
+    document.body.classList.toggle('hide-images');
+    hideImagesButton.textContent = imagesHidden ? 'Show Images' : 'Hide Images';
+});
+
+document.querySelectorAll('.btn-toggle[data-view]').forEach(btn => {
     btn.addEventListener('click', () => {
-        document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.btn-toggle[data-view]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentView = btn.dataset.view;
         renderData();
@@ -259,7 +267,7 @@ async function renderTableView() {
     const animeColumnIndex = headers.findIndex(h => String(h).toLowerCase().trim() === 'anime');
 
     let html = '<thead><tr>';
-    if (animeColumnIndex >= 0) html += '<th>Image</th>';
+    if (animeColumnIndex >= 0) html += '<th class="image-col-header">Image</th>';
     headers.forEach((header, colIndex) => {
         const cellAddress = XLSX.utils.encode_cell({ r: headerRowIndex, c: colIndex });
         const styleAttr = styleToString(getCellStyle(cellAddress, worksheet));
@@ -276,11 +284,11 @@ async function renderTableView() {
         if (animeColumnIndex >= 0) {
             const animeTitle = row[animeColumnIndex] || '';
             const imageName = localImageMapping[animeTitle.trim()];
+            html += `<td class="anime-image-cell image-col">`;
             if (imageName) {
-                html += `<td class="anime-image-cell"><img src="images/${escapeHtml(imageName)}" alt="${escapeHtml(animeTitle)}" class="anime-image" loading="lazy"></td>`;
-            } else {
-                html += `<td class="anime-image-cell">-</td>`;
+                html += `<img src="images/${escapeHtml(imageName)}" alt="${escapeHtml(animeTitle)}" class="anime-image" loading="lazy">`;
             }
+            html += `</td>`;
         }
 
         row.forEach((cellValue, colIndex) => {

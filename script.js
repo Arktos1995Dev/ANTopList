@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
     await fetchVersion();
-    // ... остальная логика DOMContentLoaded ...
 });
 
 async function fetchVersion() {
@@ -26,7 +25,7 @@ async function fetchVersion() {
 let workbook = null;
 let currentSheetName = null;
 let currentView = 'table';
-let localImageMapping = {}; // Маппинг для локальных изображений, полученный с сервера
+let localImageMapping = {}; 
 let imagesHidden = false;
 
 const uploadBox = document.getElementById('uploadBox');
@@ -43,16 +42,13 @@ const colCountEl = document.getElementById('colCount');
 const genreHint = document.getElementById('genreHint');
 const loadingIndicator = document.getElementById('loadingIndicator');
 const hideImagesButton = document.getElementById('hideImagesButton');
-const loadMalListButton = document.getElementById('loadMalList');
-const malUsernameInput = document.getElementById('malUsername');
 
-// Event listeners
+
 uploadBox.addEventListener('click', () => fileInput.click());
 uploadBox.addEventListener('dragover', (e) => { e.preventDefault(); uploadBox.classList.add('dragover'); });
 uploadBox.addEventListener('dragleave', (e) => { e.preventDefault(); uploadBox.classList.remove('dragover'); });
 uploadBox.addEventListener('drop', handleDrop);
 fileInput.addEventListener('change', handleFileSelect);
-loadMalListButton.addEventListener('click', handleMalListLoad);
 
 hideImagesButton.addEventListener('click', () => {
     imagesHidden = !imagesHidden;
@@ -72,7 +68,6 @@ document.querySelectorAll('.btn-toggle[data-view]').forEach(btn => {
 sheetSelect.addEventListener('change', () => {
     currentSheetName = sheetSelect.value;
     renderData();
-    // Повторно инициировать загрузку для нового листа
     initiateImageDownloads(); 
 });
 
@@ -92,56 +87,15 @@ function handleFileSelect(e) {
     }
 }
 
-async function handleMalListLoad() {
-    const username = malUsernameInput.value.trim();
-    if (!username) {
-        alert('Please enter a MyAnimeList username.');
-        return;
-    }
-
-    if(loadingIndicator) loadingIndicator.style.display = 'flex';
-
-    try {
-        const response = await fetch('/api/mal-list', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Server error: ${response.statusText}`);
-        }
-
-        localImageMapping = await response.json();
-        console.log('Image mapping received from server:', localImageMapping);
-
-        const animeTitles = Object.keys(localImageMapping);
-        const jsonData = [['Anime'], ...animeTitles.map(title => [title])];
-        
-        // Create a fake workbook and sheet
-        workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.aoa_to_sheet(jsonData);
-        XLSX.utils.book_append_sheet(workbook, worksheet, "MyAnimeList");
-
-        currentSheetName = "MyAnimeList";
-        sheetSelect.innerHTML = `<option value="${currentSheetName}">${currentSheetName}</option>`;
-
-        controlsSection.style.display = 'flex';
-        dataSection.style.display = 'block';
-        infoSection.style.display = 'block';
-        uploadBox.style.display = 'none';
-
-        updateInfo();
-        await renderData();
-
-    } catch (error) {
-        console.error('Error loading MAL list:', error);
-    } finally {
-        if(loadingIndicator) loadingIndicator.style.display = 'none';
+function processFile(file) {
+    if (file.name.endsWith('.xml')) {
+        processXmlFile(file);
+    } else {
+        processExcelFile(file);
     }
 }
 
-function processFile(file) {
+function processExcelFile(file) {
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
@@ -161,11 +115,11 @@ function processFile(file) {
             controlsSection.style.display = 'flex';
             dataSection.style.display = 'block';
             infoSection.style.display = 'block';
-            uploadBox.style.display = 'none'; // Скрыть область загрузки
+            uploadBox.style.display = 'none';
             
             updateInfo();
-            renderData(); // Первичная отрисовка без картинок
-            initiateImageDownloads(); // Запуск процесса скачивания на сервере
+            renderData();
+            initiateImageDownloads();
 
         } catch (error) {
             alert('Ошибка при чтении файла: ' + error.message);
@@ -173,6 +127,53 @@ function processFile(file) {
     };
     reader.readAsArrayBuffer(file);
 }
+
+function processXmlFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const xmlString = e.target.result;
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+        const sheetName = file.name.replace(/\.xml$/, '');
+
+        const animeList = Array.from(xmlDoc.getElementsByTagName('anime')).map(anime => {
+            const series_title = anime.getElementsByTagName('series_title')[0]?.textContent || '';
+            const my_score = anime.getElementsByTagName('my_score')[0]?.textContent || '0';
+            const my_status = anime.getElementsByTagName('my_status')[0]?.textContent || anime.getElementsByTagName('shiki_status')[0]?.textContent ||'';
+            const series_type = anime.getElementsByTagName('series_type')[0]?.textContent || '';
+            const series_episodes = anime.getElementsByTagName('series_episodes')[0]?.textContent || '';
+
+            return {
+                'Anime': series_title,
+                'Score': my_score,
+                'Status': my_status,
+                'Type': series_type,
+                'Episodes': series_episodes,
+            };
+        });
+        
+        const headers = ['Anime', 'Score', 'Status', 'Type', 'Episodes'];
+        const data = animeList.map(item => headers.map(header => item[header]));
+
+        const worksheet = XLSX.utils.aoa_to_sheet([headers, ...data]);
+        workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+        currentSheetName = sheetName;
+        sheetSelect.innerHTML = `<option value="${currentSheetName}">${currentSheetName}</option>`;
+
+        controlsSection.style.display = 'flex';
+        dataSection.style.display = 'block';
+        infoSection.style.display = 'block';
+        uploadBox.style.display = 'none';
+
+        updateInfo();
+        renderData();
+        initiateImageDownloads();
+    };
+    reader.readAsText(file);
+}
+
 
 async function initiateImageDownloads() {
     if (!workbook || !currentSheetName) return;
@@ -216,12 +217,10 @@ async function initiateImageDownloads() {
         localImageMapping = await response.json();
         console.log('Маппинг изображений получен с сервера:', localImageMapping);
 
-        // Перерисовываем данные с уже загруженными изображениями
         await renderData();
 
     } catch (error) {
         console.error('Ошибка при запросе на скачивание изображений:', error);
-        // Можно показать сообщение об ошибке пользователю
     } finally {
         if(loadingIndicator) loadingIndicator.style.display = 'none';
     }
@@ -275,7 +274,7 @@ function getCellHyperlink(cellAddress, worksheet) {
 
 function styleToString(style) {
     if (!style) return '';
-    return Object.entries(style).map(([key, value]) => `${key.replace(/([A-Z])/g, '-\1').toLowerCase()}: ${value}`).join('; ');
+    return Object.entries(style).map(([key, value]) => `${key.replace(/([A-Z])/g, '-$1').toLowerCase()}: ${value}`).join('; ');
 }
 
 function getGenreColor(genre) {

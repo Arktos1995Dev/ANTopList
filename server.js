@@ -3,7 +3,6 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { processAndDownloadImages } = require('./download-images.js');
-const { getMalUserAnimeList } = require('./mal-integration.js');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -26,21 +25,6 @@ try {
 // API Routes
 app.get('/api/version', (req, res) => {
     res.json({ version: appVersion });
-});
-
-app.post('/api/mal-list', async (req, res) => {
-    try {
-        const { username } = req.body;
-        if (!username) {
-            return res.status(400).json({ message: 'MyAnimeList username is required' });
-        }
-        const animeTitles = await getMalUserAnimeList(username);
-        const downloadedFiles = await processAndDownloadImages(animeTitles);
-        res.json(downloadedFiles);
-    } catch (error) {
-        console.error('Error processing MAL list request:', error);
-        res.status(500).json({ message: 'Internal Server Error', error: error.message });
-    }
 });
 
 app.post('/download-images', async (req, res) => {

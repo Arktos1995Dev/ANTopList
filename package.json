@@ -6,13 +6,16 @@
   "scripts": {
     "download": "node download-images.js",
     "server": "node server.js",
-    "start": "node server.js"
+    "start": "firebase emulators:start --only hosting",
+    "deploy": "firebase deploy --only hosting"
   },
   "dependencies": {
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.0.2"
   },
   "engines": {
     "node": ">=14.0.0"
   }
 }
-

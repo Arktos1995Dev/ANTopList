@@ -16,16 +16,23 @@ function downloadFile(url, filepath) {
     return new Promise((resolve, reject) => {
         const protocol = url.startsWith('https') ? https : http;
         
-        protocol.get(url, (response) => {
-            if (response.statusCode === 301 || response.statusCode === 302) {
-                // Перенаправление
+        const request = protocol.get(url, (response) => {
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                // Обработка перенаправления
                 return downloadFile(response.headers.location, filepath)
                     .then(resolve)
                     .catch(reject);
             }
             
             if (response.statusCode !== 200) {
-                reject(new Error(`Ошибка HTTP: ${response.statusCode}`));
+                // Собираем тело ответа для лога
+                let errorBody = '';
+                response.on('data', chunk => errorBody += chunk);
+                response.on('end', () => {
+                  const err = new Error(`Статус ответа: ${response.statusCode} ${response.statusMessage}`);
+                  err.body = errorBody;
+                  reject(err);
+                });
                 return;
             }
             
@@ -33,15 +40,18 @@ function downloadFile(url, filepath) {
             response.pipe(fileStream);
             
             fileStream.on('finish', () => {
-                fileStream.close();
-                resolve();
+                fileStream.close(resolve);
             });
             
             fileStream.on('error', (err) => {
-                fs.unlink(filepath, () => {});
+                fs.unlink(filepath, () => {}); // Удаляем частичный файл
                 reject(err);
             });
-        }).on('error', reject);
+        });
+
+        request.on('error', (err) => {
+          reject(err);
+        });
     });
 }
 
@@ -52,17 +62,16 @@ function makeRequest(url) {
         
         protocol.get(url, (res) => {
             let data = '';
-            
-            res.on('data', (chunk) => {
-                data += chunk;
-            });
-            
+            res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
                 try {
-                    const jsonData = JSON.parse(data);
-                    resolve({ ok: res.statusCode === 200, status: res.statusCode, statusText: res.statusMessage, json: () => Promise.resolve(jsonData) });
-                } catch (error) {
-                    reject(error);
+                    if (!res.statusCode) {
+                        return reject(new Error("Не удалось получить код состояния ответа."));
+                    }
+                    const isSuccess = res.statusCode >= 200 && res.statusCode < 300;
+                    resolve({ ok: isSuccess, status: res.statusCode, statusText: res.statusMessage, json: () => Promise.resolve(JSON.parse(data)) });
+                } catch (e) {
+                    reject(new Error(`Ошибка парсинга JSON: ${e.message}. Ответ сервера: ${data}`));
                 }
             });
         }).on('error', reject);
@@ -70,268 +79,165 @@ function makeRequest(url) {
 }
 
 // Функция для извлечения URL изображения
-function getImageUrl(images, animeData) {
-    if (!images) return null;
+function getImageUrl(animeData) {
+    if (!animeData || !animeData.images) return null;
     
-    let imageUrl = null;
+    const { jpg, webp } = animeData.images;
+    const imageUrl = (jpg && jpg.image_url) || (webp && webp.image_url);
     
-    // Приоритет: jpg -> webp
-    if (images.jpg && images.jpg.image_url) {
-        imageUrl = images.jpg.image_url;
-    } else if (images.webp && images.webp.image_url) {
-        imageUrl = images.webp.image_url;
-    } else if (animeData.images && animeData.images.image_url) {
-        imageUrl = animeData.images.image_url;
+    // Игнорируем стандартное изображение "заглушку"
+    if (imageUrl && imageUrl.includes('questionmark')) {
+        return null;
     }
     
-    if (imageUrl && imageUrl !== 'https://cdn.myanimelist.net/images/questionmark_23.gif') {
-        return imageUrl;
-    }
-    
-    return null;
+    return imageUrl;
 }
 
 // Функция для генерации альтернативных вариантов поиска
 function generateSearchAlternatives(title) {
-    const alternatives = [title];
+    const alternatives = new Set([title]);
     const trimmed = title.trim();
     
     // Убираем скобки и содержимое в них
-    const withoutBrackets = trimmed.replace(/[\(\[].*?[\)\]]/g, '').trim();
-    if (withoutBrackets && withoutBrackets !== trimmed) {
-        alternatives.push(withoutBrackets);
-    }
-    
-    // Берем только первое слово/часть до двоеточия
-    const beforeColon = trimmed.split(':')[0].trim();
-    if (beforeColon && beforeColon !== trimmed) {
-        alternatives.push(beforeColon);
-    }
-    
-    // Берем только первое слово
-    const firstWord = trimmed.split(/\s+/)[0];
-    if (firstWord && firstWord.length > 2 && firstWord !== trimmed) {
-        alternatives.push(firstWord);
-    }
-    
-    // Убираем специальные символы
-    const cleaned = trimmed.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
-    if (cleaned && cleaned !== trimmed) {
-        alternatives.push(cleaned);
-    }
-    
-    return [...new Set(alternatives)]; // Убираем дубликаты
+    alternatives.add(trimmed.replace(/\s*[\[(].*?[)\]]\s*/g, '').trim());
+    // Часть до двоеточия
+    alternatives.add(trimmed.split(':')[0].trim());
+    // Очищенное от спецсимволов название
+    alternatives.add(trimmed.replace(/[^a-zA-Z0-9\s-]/g, ' ').replace(/\s+/g, ' ').trim());
+
+    alternatives.delete(''); // Удаляем пустые строки
+    return Array.from(alternatives);
 }
 
-// Функция для получения изображения аниме через API с повторными попытками
-async function fetchAnimeImage(animeTitle, retryCount = 0) {
-    const maxRetries = 3;
-    const baseDelay = 1000; // 1 секунда базовая задержка
+// Функция для получения изображения аниме через API
+async function fetchAnimeImageWithAlternatives(animeTitle) {
+    const alternatives = generateSearchAlternatives(animeTitle);
     
-    try {
-        const searchUrl = `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(animeTitle)}&limit=1`;
+    for (const title of alternatives) {
+        const searchUrl = `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(title)}&limit=1`;
         
-        const response = await makeRequest(searchUrl);
-        
-        // Обработка ошибки 429 (Too Many Requests)
-        if (response.status === 429) {
-            if (retryCount < maxRetries) {
-                const delay = baseDelay * Math.pow(2, retryCount); // Экспоненциальная задержка
-                console.log(`  ⏳ Лимит запросов превышен, ожидание ${delay/1000} сек...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                return fetchAnimeImage(animeTitle, retryCount + 1);
-            } else {
-                throw new Error(`API ошибка 429: Превышен лимит запросов после ${maxRetries} попыток`);
-            }
-        }
-        
-        if (!response.ok) {
-            throw new Error(`API ошибка: ${response.status} ${response.statusText}`);
-        }
-        
-        const data = response.json();
-        
-        // Проверяем, есть ли результаты
-        if (!data.data || data.data.length === 0) {
-            // Пробуем альтернативные варианты поиска
-            const alternatives = generateSearchAlternatives(animeTitle);
-            for (const altTitle of alternatives) {
-                if (altTitle === animeTitle) continue; // Уже проверили
-                
-                const altSearchUrl = `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(altTitle)}&limit=1`;
-                await new Promise(resolve => setTimeout(resolve, 500)); // Задержка между попытками
-                const altResponse = await makeRequest(altSearchUrl);
-                
-                if (altResponse.ok && altResponse.status !== 429) {
-                    const altData = altResponse.json();
-                    if (altData.data && altData.data.length > 0) {
-                        const images = altData.data[0].images;
-                        let imageUrl = getImageUrl(images, altData.data[0]);
-                        if (imageUrl) {
-                            console.log(`  ✓ Найдено по альтернативному названию: "${altTitle}"`);
-                            return imageUrl;
-                        }
-                    }
+        try {
+            // Задержка для соблюдения лимитов API
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            const response = await makeRequest(searchUrl);
+            
+            if (!response.ok) {
+                 if (response.status === 429) { // Too Many Requests
+                    console.log(`  🟡 Лимит запросов превышен. Ожидание 2 секунды...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    continue; // Повторяем попытку с тем же названием
                 }
+                // Не логируем как ошибку, просто пробуем следующий вариант
+                continue; 
             }
             
-            return null; // Не найдено ни по одному варианту
+            const data = await response.json();
+            
+            if (data.data && data.data.length > 0) {
+                const imageUrl = getImageUrl(data.data[0]);
+                if (imageUrl) {
+                    if (title !== animeTitle) {
+                        console.log(`  ℹ️ Найдено по альтернативному названию: "${title}"`);
+                    }
+                    return imageUrl;
+                }
+            }
+        } catch (error) {
+            console.error(`  ❌ Ошибка при запросе к API для "${title}":`);
+            console.error(`     - URL: ${searchUrl}`);
+            console.error(`     - Ошибка: ${error.message}\n`);
+            // Продолжаем со следующим вариантом
         }
-        
-        // Если результаты есть, ищем изображение
-        const images = data.data[0].images;
-        let imageUrl = getImageUrl(images, data.data[0]);
-        
-        if (imageUrl) {
-            return imageUrl;
-        }
-        
-        // Если изображение не найдено, но аниме найдено
-        return null;
-    } catch (error) {
-        console.error(`Ошибка при получении изображения для "${animeTitle}":`, error.message);
-        return null;
     }
+    
+    return null; // Не найдено ни по одному из вариантов
 }
 
 // Функция для создания безопасного имени файла
 function sanitizeFileName(name) {
-    return name
-        .replace(/[<>:"/\\|?*]/g, '_')
-        .replace(/\s+/g, '_')
-        .substring(0, 100);
+    return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_');
 }
 
 // Основная функция
 async function downloadImages() {
-    // Ищем xlsx файл
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.xlsx') || f.endsWith('.xls'));
-    
     if (files.length === 0) {
-        console.error('Не найден xlsx файл в текущей директории');
+        console.error('Ошибка: Не найден .xlsx или .xls файл в текущей директории.');
         return;
     }
     
     const xlsxFile = files[0];
-    console.log(`Читаю файл: ${xlsxFile}`);
+    console.log(`\n📖 Читаю файл: ${xlsxFile}`);
     
-    // Читаем Excel файл
     const workbook = XLSX.readFile(xlsxFile);
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    
-    // Конвертируем в JSON
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
     
-    if (jsonData.length === 0) {
-        console.error('Файл пуст');
-        return;
-    }
-    
-    // Находим заголовки
-    let headerRowIndex = 0;
-    for (let i = 0; i < jsonData.length; i++) {
-        if (jsonData[i].some(cell => cell !== '')) {
-            headerRowIndex = i;
-            break;
-        }
-    }
-    
-    const headers = jsonData[headerRowIndex] || [];
-    
-    // Находим колонку "anime"
-    const animeColumnIndex = headers.findIndex(h => 
-        String(h).toLowerCase().trim() === 'anime'
-    );
+    const headerRow = jsonData.find(row => row.some(cell => cell)) || [];
+    const animeColumnIndex = headerRow.findIndex(h => String(h).toLowerCase().trim() === 'anime');
     
     if (animeColumnIndex < 0) {
-        console.error('Не найдена колонка "anime"');
+        console.error('Ошибка: В файле не найдена колонка с названием "anime".');
         return;
     }
     
-    // Получаем список уникальных аниме
-    const dataRows = jsonData.slice(headerRowIndex + 1);
-    const animeTitles = [...new Set(
-        dataRows
-            .map(row => row[animeColumnIndex])
-            .filter(title => title && String(title).trim())
-            .map(title => String(title).trim())
-    )];
+    const animeTitles = [...new Set(jsonData.slice(jsonData.indexOf(headerRow) + 1)
+        .map(row => String(row[animeColumnIndex]).trim())
+        .filter(title => title))];
     
-    console.log(`Найдено ${animeTitles.length} уникальных аниме\n`);
+    console.log(`🔍 Найдено ${animeTitles.length} уникальных аниме для скачивания.\n`);
     
     let successCount = 0;
     let errorCount = 0;
     const downloadedFiles = {};
     
-    // Загружаем изображения
     for (let i = 0; i < animeTitles.length; i++) {
         const animeTitle = animeTitles[i];
         console.log(`[${i + 1}/${animeTitles.length}] Обрабатываю: "${animeTitle}"...`);
         
+        const imageUrl = await fetchAnimeImageWithAlternatives(animeTitle);
+        
+        if (!imageUrl) {
+            console.log(`  ❌ Изображение не найдено для "${animeTitle}"\n`);
+            errorCount++;
+            continue;
+        }
+        
+        const safeName = sanitizeFileName(animeTitle);
+        const ext = path.extname(new URL(imageUrl).pathname) || '.jpg';
+        const filename = `${safeName}${ext}`;
+        const filepath = path.join(imagesDir, filename);
+        
         try {
-            const imageUrl = await fetchAnimeImage(animeTitle);
-            
-            if (!imageUrl) {
-                console.log(`  ❌ Изображение не найдено для "${animeTitle}"`);
-                console.log(`     Проверьте правильность названия или добавьте изображение вручную\n`);
-                errorCount++;
-                continue;
-            }
-            
-            // Определяем расширение файла
-            const urlParts = new URL(imageUrl);
-            let ext = path.extname(urlParts.pathname);
-            if (!ext || ext === '') {
-                ext = '.jpg'; // По умолчанию
-            }
-            
-            // Создаем имя файла
-            const safeName = sanitizeFileName(animeTitle);
-            const filename = `${safeName}${ext}`;
-            const filepath = path.join(imagesDir, filename);
-            
-            // Скачиваем файл
             await downloadFile(imageUrl, filepath);
-            
             downloadedFiles[animeTitle] = filename;
-            console.log(`  ✓ Скачано: ${filename}\n`);
+            console.log(`  ✅ Скачано: ${filename}\n`);
             successCount++;
-            
-            // Задержка между запросами (увеличена до 500ms для соблюдения лимита API - 3 запроса в секунду)
-            if (i < animeTitles.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
         } catch (error) {
-            console.error(`  ❌ Ошибка при скачивании "${animeTitle}":`, error.message, '\n');
+            console.error(`  ❌ Ошибка при скачивании файла для "${animeTitle}":`);
+            console.error(`     - URL изображения: ${imageUrl}`);
+            console.error(`     - Причина: ${error.message}`);
+            if(error.body) {
+              console.error(`     - Ответ сервера: ${error.body}`);
+            }
+            console.error(''); // Пустая строка для читаемости
             errorCount++;
         }
     }
     
-    // Сохраняем маппинг названий на имена файлов (для использования в веб-приложении)
-    const mappingFile = path.join(__dirname, 'image-mapping.json');
-    fs.writeFileSync(mappingFile, JSON.stringify(downloadedFiles, null, 2), 'utf8');
-    console.log(`\nМаппинг сохранен в: ${mappingFile}`);
-    
-    // Также создаем обратный маппинг (имя файла -> название) для быстрого поиска
-    const reverseMapping = {};
-    Object.entries(downloadedFiles).forEach(([title, filename]) => {
-        reverseMapping[filename] = title;
-    });
-    
-    const reverseMappingFile = path.join(__dirname, 'image-mapping-reverse.json');
-    fs.writeFileSync(reverseMappingFile, JSON.stringify(reverseMapping, null, 2), 'utf8');
-    console.log(`Обратный маппинг сохранен в: ${reverseMappingFile}`);
-    
-    console.log(`\n=== Итого ===`);
-    console.log(`Успешно скачано: ${successCount}`);
-    console.log(`Ошибок: ${errorCount}`);
-    console.log(`Всего: ${animeTitles.length}`);
+    if (Object.keys(downloadedFiles).length > 0) {
+        fs.writeFileSync(path.join(__dirname, 'image-mapping.json'), JSON.stringify(downloadedFiles, null, 2));
+        console.log('✅ Маппинг названий на файлы сохранен в image-mapping.json');
+    }
+
+    console.log(`\n=== Итоги ===`);
+    console.log(`👍 Успешно скачано: ${successCount}`);
+    console.log(`👎 Ошибок: ${errorCount}`);
+    console.log(`-`.repeat(15) + `\n`);
 }
 
-// Запускаем
 downloadImages().catch(error => {
-    console.error('Критическая ошибка:', error);
+    console.error('Критическая ошибка выполнения скрипта:', error);
     process.exit(1);
 });
-

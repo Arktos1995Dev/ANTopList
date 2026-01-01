@@ -1,31 +1,29 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const { createClient } = require('@supabase/supabase-js');
 const { processAndDownloadImages } = require('./download-images.js');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
 
+// --- Supabase Setup ---
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+// --- End Supabase Setup ---
+
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname))); // Serve static files from the root directory
-app.use('/images', express.static(path.join(__dirname, 'images'))); // Serve images
-
-// --- User Authentication and List Management ---
-
-const usersDir = path.join(__dirname, 'users');
-if (!fs.existsSync(usersDir)) {
-    fs.mkdirSync(usersDir);
-}
+app.use(express.static(path.join(__dirname)));
+app.use('/images', express.static(path.join(__dirname, 'images')));
 
 // In-memory session store (for simplicity, replace with a proper session store in production)
 const sessions = {};
-
-// Helper function to get user file path
-const getUserFilePath = (username) => path.join(usersDir, `${username}.json`);
 
 // Registration
 app.post('/api/register', async (req, res) => {
@@ -34,16 +32,24 @@ app.post('/api/register', async (req, res) => {
         return res.status(400).json({ message: 'Username and password are required' });
     }
 
-    const userFilePath = getUserFilePath(username);
-    if (fs.existsSync(userFilePath)) {
-        return res.status(409).json({ message: 'User already exists' });
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const { error } = await supabase
+            .from('users')
+            .insert([{ username, password: hashedPassword }]);
+
+        if (error) {
+            if (error.code === '23505') { // unique_violation
+                return res.status(409).json({ message: 'User already exists' });
+            }
+            throw error;
+        }
+
+        res.status(201).json({ message: 'User registered successfully' });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ message: 'Internal server error during registration' });
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const userData = { username, password: hashedPassword, list: [], friends: [] };
-    fs.writeFileSync(userFilePath, JSON.stringify(userData, null, 2));
-
-    res.status(201).json({ message: 'User registered successfully' });
 });
 
 // Login
@@ -53,23 +59,31 @@ app.post('/api/login', async (req, res) => {
         return res.status(400).json({ message: 'Username and password are required' });
     }
 
-    const userFilePath = getUserFilePath(username);
-    if (!fs.existsSync(userFilePath)) {
-        return res.status(401).json({ message: 'Invalid credentials' });
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('username', username);
+
+        if (error || !users || users.length === 0) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        const user = users[0];
+        const isMatch = await bcrypt.compare(password, user.password);
+
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        const sessionId = Buffer.from(username).toString('base64');
+        sessions[sessionId] = { username: user.username };
+
+        res.json({ message: 'Login successful', token: sessionId });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ message: 'Internal server error during login' });
     }
-
-    const userData = JSON.parse(fs.readFileSync(userFilePath, 'utf8'));
-
-    const isMatch = await bcrypt.compare(password, userData.password);
-    if (!isMatch) {
-        return res.status(401).json({ message: 'Invalid credentials' });
-    }
-    
-    // Create a simple session token (in a real app, use JWT)
-    const sessionId = Buffer.from(username).toString('base64');
-    sessions[sessionId] = { username: userData.username };
-
-    res.json({ message: 'Login successful', token: sessionId });
 });
 
 // Middleware to check for authentication
@@ -83,37 +97,61 @@ const requireAuth = (req, res, next) => {
 };
 
 // Save list
-app.post('/api/list', requireAuth, (req, res) => {
+app.post('/api/list', requireAuth, async (req, res) => {
     const { list } = req.body;
-    const userFilePath = getUserFilePath(req.user.username);
-    const userData = JSON.parse(fs.readFileSync(userFilePath, 'utf8'));
-    userData.list = list;
-    fs.writeFileSync(userFilePath, JSON.stringify(userData, null, 2));
-    res.json({ message: 'List saved successfully' });
+    try {
+        const { error } = await supabase
+            .from('users')
+            .update({ list: list })
+            .eq('username', req.user.username);
+
+        if (error) throw error;
+        res.json({ message: 'List saved successfully' });
+    } catch (error) {
+        console.error('Save list error:', error);
+        res.status(500).json({ message: 'Internal server error while saving list' });
+    }
 });
 
 // Load list
-app.get('/api/list', requireAuth, (req, res) => {
-    const userFilePath = getUserFilePath(req.user.username);
-    const userData = JSON.parse(fs.readFileSync(userFilePath, 'utf8'));
-    res.json(userData.list);
+app.get('/api/list', requireAuth, async (req, res) => {
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('list')
+            .eq('username', req.user.username);
+
+        if (error) throw error;
+        res.json(users[0]?.list || []);
+    } catch (error) {
+        console.error('Load list error:', error);
+        res.status(500).json({ message: 'Internal server error while loading list' });
+    }
 });
 
 // Load a specific user's list (public)
-app.get('/api/list/:username', (req, res) => {
+app.get('/api/list/:username', async (req, res) => {
     const { username } = req.params;
-    const userFilePath = getUserFilePath(username);
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('list')
+            .eq('username', username);
+        
+        if (error) throw error;
 
-    if (!fs.existsSync(userFilePath)) {
-        return res.status(404).json({ message: 'User not found' });
+        if (!users || users.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        res.json(users[0].list || []);
+    } catch (error) {
+        console.error('Load user list error:', error);
+        res.status(500).json({ message: 'Internal server error while loading user list' });
     }
-
-    const userData = JSON.parse(fs.readFileSync(userFilePath, 'utf8'));
-    res.json(userData.list || []);
 });
 
 // Add a friend
-app.post('/api/friends/add', requireAuth, (req, res) => {
+app.post('/api/friends/add', requireAuth, async (req, res) => {
     const { friendUsername } = req.body;
     const currentUser = req.user.username;
 
@@ -125,39 +163,64 @@ app.post('/api/friends/add', requireAuth, (req, res) => {
         return res.status(400).json({ message: 'You cannot add yourself as a friend' });
     }
 
-    const friendFilePath = getUserFilePath(friendUsername);
-    if (!fs.existsSync(friendFilePath)) {
-        return res.status(404).json({ message: 'User to be added not found' });
+    try {
+        const { data: friend, error: friendError } = await supabase
+            .from('users')
+            .select('username')
+            .eq('username', friendUsername)
+            .single();
+
+        if (friendError || !friend) {
+            return res.status(404).json({ message: 'User to be added not found' });
+        }
+
+        const { data: currentUserData, error: currentUserError } = await supabase
+            .from('users')
+            .select('friends')
+            .eq('username', currentUser)
+            .single();
+        
+        if (currentUserError) throw currentUserError;
+
+        const friends = currentUserData.friends || [];
+
+        if (friends.includes(friendUsername)) {
+            return res.status(409).json({ message: 'This user is already your friend' });
+        }
+
+        friends.push(friendUsername);
+
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({ friends: friends })
+            .eq('username', currentUser);
+
+        if (updateError) throw updateError;
+
+        res.status(200).json({ message: `Successfully added ${friendUsername} as a friend` });
+    } catch (error) {
+        console.error('Add friend error:', error);
+        res.status(500).json({ message: 'Internal server error while adding friend' });
     }
-    
-    const currentUserFilePath = getUserFilePath(currentUser);
-    const currentUserData = JSON.parse(fs.readFileSync(currentUserFilePath, 'utf8'));
-
-    if (!currentUserData.friends) {
-        currentUserData.friends = [];
-    }
-
-    if (currentUserData.friends.includes(friendUsername)) {
-        return res.status(409).json({ message: 'This user is already your friend' });
-    }
-
-    currentUserData.friends.push(friendUsername);
-    fs.writeFileSync(currentUserFilePath, JSON.stringify(currentUserData, null, 2));
-
-    res.status(200).json({ message: `Successfully added ${friendUsername} as a friend` });
 });
 
 // Get friends list
-app.get('/api/friends', requireAuth, (req, res) => {
-    const currentUser = req.user.username;
-    const currentUserFilePath = getUserFilePath(currentUser);
-    const currentUserData = JSON.parse(fs.readFileSync(currentUserFilePath, 'utf8'));
-    
-    res.json(currentUserData.friends || []);
+app.get('/api/friends', requireAuth, async (req, res) => {
+    try {
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('friends')
+            .eq('username', req.user.username);
+
+        if (error) throw error;
+
+        res.json(users[0]?.friends || []);
+    } catch (error) {
+        console.error('Get friends error:', error);
+        res.status(500).json({ message: 'Internal server error while getting friends' });
+    }
 });
 
-
-// --- End of User Management ---
 
 // Get app version from package.json
 let appVersion = 'unknown';

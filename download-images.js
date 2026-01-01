@@ -2,36 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
-const { Pool } = require('pg');
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
-});
 
 const imagesDir = path.join(__dirname, 'images');
 if (!fs.existsSync(imagesDir)) {
     fs.mkdirSync(imagesDir, { recursive: true });
 }
-
-async function createImageTable() {
-    const client = await pool.connect();
-    try {
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS images (
-                id SERIAL PRIMARY KEY,
-                title TEXT UNIQUE NOT NULL,
-                filename TEXT NOT NULL
-            )
-        `);
-    } finally {
-        client.release();
-    }
-}
-
-createImageTable();
 
 function downloadFile(url, filepath) {
     return new Promise((resolve, reject) => {
@@ -103,7 +78,7 @@ async function fetchAnimeImageWithAlternatives(animeTitle) {
     for (const title of alternatives) {
         const searchUrl = `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(title)}&limit=1`;
         try {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 500)); // Rate limit Jikan API
             const response = await makeRequest(searchUrl);
             if (response.status === 429) {
                 console.log(`Rate limit hit. Waiting 2 seconds...`);
@@ -130,41 +105,58 @@ function sanitizeFileName(name) {
     return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_');
 }
 
-async function processAndDownloadImages(animeTitles) {
+async function processAndDownloadImages(supabase, animeTitles) {
     console.log(`Starting download for ${animeTitles.length} unique anime titles.`);
     const downloadedFiles = {};
-    const client = await pool.connect();
-    try {
-        for (const animeTitle of animeTitles) {
-            console.log(`Processing: "${animeTitle}"...`);
+    
+    for (const animeTitle of animeTitles) {
+        console.log(`Processing: "${animeTitle}"...`);
 
-            const dbResult = await client.query('SELECT filename FROM images WHERE title = $1', [animeTitle]);
-            if (dbResult.rows.length > 0) {
-                downloadedFiles[animeTitle] = dbResult.rows[0].filename;
-                console.log(`Found in DB: ${dbResult.rows[0].filename}`);
-                continue;
-            }
+        const { data: existingImage, error: selectError } = await supabase
+            .from('images')
+            .select('filename')
+            .eq('title', animeTitle)
+            .single();
 
-            const imageUrl = await fetchAnimeImageWithAlternatives(animeTitle);
-            if (!imageUrl) {
-                console.log(`Image not found for "${animeTitle}"`);
-                continue;
-            }
-            const safeName = sanitizeFileName(animeTitle);
-            const ext = path.extname(new URL(imageUrl).pathname) || '.jpg';
-            const filename = `${safeName}${ext}`;
-            const filepath = path.join(imagesDir, filename);
-            try {
-                await downloadFile(imageUrl, filepath);
-                await client.query('INSERT INTO images (title, filename) VALUES ($1, $2)', [animeTitle, filename]);
-                downloadedFiles[animeTitle] = filename;
-                console.log(`Downloaded: ${filename}`);
-            } catch (error) {
-                console.error(`Failed to download file for "${animeTitle}" from ${imageUrl}: ${error.message}`);
-            }
+        if (selectError && selectError.code !== 'PGRST116') { // Ignore "0 rows" error
+            console.error(`Error checking DB for "${animeTitle}":`, selectError.message);
+            continue;
         }
-    } finally {
-        client.release();
+        
+        if (existingImage) {
+            downloadedFiles[animeTitle] = existingImage.filename;
+            console.log(`Found in DB: ${existingImage.filename}`);
+            continue;
+        }
+
+        const imageUrl = await fetchAnimeImageWithAlternatives(animeTitle);
+        if (!imageUrl) {
+            console.log(`Image not found for "${animeTitle}"`);
+            continue;
+        }
+
+        const safeName = sanitizeFileName(animeTitle);
+        const ext = path.extname(new URL(imageUrl).pathname) || '.jpg';
+        const filename = `${safeName}${ext}`;
+        const filepath = path.join(imagesDir, filename);
+
+        try {
+            await downloadFile(imageUrl, filepath);
+            
+            const { error: insertError } = await supabase
+                .from('images')
+                .insert({ title: animeTitle, filename: filename });
+
+            if (insertError) {
+                console.error(`Failed to insert DB record for "${animeTitle}": ${insertError.message}`);
+            }
+
+            downloadedFiles[animeTitle] = filename;
+            console.log(`Downloaded: ${filename}`);
+
+        } catch (error) {
+            console.error(`Failed to download file for "${animeTitle}" from ${imageUrl}: ${error.message}`);
+        }
     }
 
     if (Object.keys(downloadedFiles).length > 0) {

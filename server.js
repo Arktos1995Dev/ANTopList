@@ -242,7 +242,7 @@ app.post('/download-images', async (req, res) => {
         if (!Array.isArray(animeTitles)) {
             return res.status(400).json({ message: 'animeTitles must be an array' });
         }
-        const downloadedFiles = await processAndDownloadImages(animeTitles);
+        const downloadedFiles = await processAndDownloadImages(supabase, animeTitles);
         res.json(downloadedFiles);
     } catch (error) {
         console.error('Error processing download request:', error);

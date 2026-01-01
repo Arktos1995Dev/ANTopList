@@ -443,6 +443,7 @@ async function renderData() {
     } else {
         await renderCardsView();
     }
+    initSortable();
 }
 
 function getCellStyle(cellAddress, worksheet) {
@@ -518,7 +519,7 @@ async function renderTableView() {
     const genreColumnIndex = headers.findIndex(h => String(h).toLowerCase().trim() === 'genre');
     const animeColumnIndex = headers.findIndex(h => String(h).toLowerCase().trim() === 'anime');
 
-    let html = '<thead><tr>';
+    let html = '<thead><tr><th></th>';
     if (animeColumnIndex >= 0) html += '<th class="image-col-header">Image</th>';
     headers.forEach((header, colIndex) => {
         const cellAddress = XLSX.utils.encode_cell({ r: headerRowIndex, c: colIndex });
@@ -531,7 +532,8 @@ async function renderTableView() {
         if (!row.some(cell => cell !== '')) return;
         const genreValue = genreColumnIndex >= 0 ? row[genreColumnIndex] : null;
         const rowStyle = getGenreColor(genreValue) ? ` style="background-color: ${getGenreColor(genreValue)};"` : '';
-        html += `<tr${rowStyle}>`;
+        html += `<tr${rowStyle} data-row-index="${rowIndex}">`;
+        html += '<td class="drag-handle">&#9776;</td>';
 
         if (animeColumnIndex >= 0) {
             const animeTitle = row[animeColumnIndex] || '';
@@ -580,7 +582,8 @@ async function renderCardsView() {
     dataRows.forEach((row, rowIndex) => {
         const genreValue = genreColumnIndex >= 0 ? row[genreColumnIndex] : null;
         const cardStyle = getGenreColor(genreValue) ? ` style="background-color: ${getGenreColor(genreValue)};"` : '';
-        html += `<div class="card"${cardStyle}>`;
+        html += `<div class="card"${cardStyle} data-row-index="${rowIndex}">`;
+        html += '<span class="drag-handle">&#9776;</span>';
         
         const animeTitle = animeColumnIndex >= 0 ? (row[animeColumnIndex] || '') : '';
         const imageName = localImageMapping[animeTitle.trim()];
@@ -606,6 +609,61 @@ async function renderCardsView() {
     showGenreColorHint(genreColumnIndex >= 0);
 }
 
+let sortableInstance = null;
+
+function initSortable() {
+    if (sortableInstance) {
+        sortableInstance.destroy();
+    }
+
+    const target = currentView === 'table' ? dataTable.querySelector('tbody') : cardsContainer;
+
+    sortableInstance = new Sortable(target, {
+        animation: 150,
+        handle: '.drag-handle',
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        onEnd: (evt) => {
+            const { oldIndex, newIndex } = evt;
+            if (oldIndex === newIndex) return;
+
+            const worksheet = workbook.Sheets[currentSheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+            let headerRowIndex = 0;
+            for(let i=0; i < jsonData.length; i++) {
+                if (jsonData[i].some(cell => cell !== '')) { headerRowIndex = i; break; }
+            }
+            const headers = jsonData[headerRowIndex];
+            const dataRows = jsonData.slice(headerRowIndex + 1);
+
+            const [movedRow] = dataRows.splice(oldIndex, 1);
+            dataRows.splice(newIndex, 0, movedRow);
+
+            const newSheetData = [headers, ...dataRows];
+            const newWorksheet = XLSX.utils.aoa_to_sheet(newSheetData);
+            
+            // Preserve hyperlinks and styles
+            Object.keys(worksheet).forEach(cellAddress => {
+                if (worksheet[cellAddress].l) {
+                    const newCell = newWorksheet[cellAddress];
+                    if(newCell) newCell.l = worksheet[cellAddress].l;
+                }
+                 if (worksheet[cellAddress].s) {
+                    const newCell = newWorksheet[cellAddress];
+                    if(newCell) newCell.s = worksheet[cellAddress].s;
+                }
+            });
+            if (worksheet['!hyperlinks']) {
+                newWorksheet['!hyperlinks'] = worksheet['!hyperlinks'];
+            }
+
+            workbook.Sheets[currentSheetName] = newWorksheet;
+
+            renderData();
+        }
+    });
+}
+
 function escapeHtml(text) {
     if (text === null || text === undefined) return '';
     const div = document.createElement('div');
@@ -618,4 +676,3 @@ function showGenreColorHint(show) {
         genreHint.style.display = show ? 'flex' : 'none';
     }
 }
-

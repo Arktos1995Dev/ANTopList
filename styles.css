@@ -559,3 +559,99 @@ body {
         padding: 8px;
     }
 }
+
+/* Drag and Drop Styles */
+.drag-handle {
+    cursor: move;
+    cursor: -webkit-grabbing;
+    padding: 0 10px;
+    color: #ccc;
+}
+
+.sortable-ghost {
+    opacity: 0.4;
+    background: #eef2ff;
+}
+
+.sortable-chosen {
+    background: #e0e7ff;
+}
+
+.data-table tbody tr .drag-handle {
+    width: 30px;
+    text-align: center;
+}
+
+.card .drag-handle {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 1.5rem;
+}
+
+/* User Actions Section */
+.user-actions-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+}
+
+.friends-list-section h3, .view-user-list-section h3 {
+    font-size: 1.2rem;
+    color: var(--text-primary);
+    margin-bottom: 15px;
+}
+
+#friendsList {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 15px 0;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+#friendsList li {
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-weight: 500;
+}
+
+#friendsList li:hover {
+    background: var(--hover-color);
+}
+
+.add-friend-form, .view-user-list-section {
+    display: flex;
+    gap: 10px;
+}
+
+#addFriendInput, #viewUserInput {
+    flex-grow: 1;
+    padding: 8px 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+#addFriendBtn, #viewUserListBtn {
+    padding: 8px 16px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#addFriendBtn:hover, #viewUserListBtn:hover {
+    background: var(--primary-dark);
+}
+

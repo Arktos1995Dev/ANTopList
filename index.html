@@ -6,6 +6,7 @@
     <title>Anime List</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -21,6 +22,22 @@
                 </div>
             </div>
         </header>
+
+        <div class="user-actions-section" id="userActionsSection" style="display: none;">
+            <div class="friends-list-section">
+                <h3>Друзья</h3>
+                <ul id="friendsList"></ul>
+                <div class="add-friend-form">
+                    <input type="text" id="addFriendInput" placeholder="Имя пользователя">
+                    <button id="addFriendBtn">Добавить в друзья</button>
+                </div>
+            </div>
+            <div class="view-user-list-section">
+                <h3>Посмотреть список пользователя</h3>
+                <input type="text" id="viewUserInput" placeholder="Имя пользователя">
+                <button id="viewUserListBtn">Посмотреть</button>
+            </div>
+        </div>
 
         <div class="upload-section">
             <div class="upload-box" id="uploadBox">

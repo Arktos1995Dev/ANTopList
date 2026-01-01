@@ -40,7 +40,7 @@ app.post('/api/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const userData = { username, password: hashedPassword, list: [] };
+    const userData = { username, password: hashedPassword, list: [], friends: [] };
     fs.writeFileSync(userFilePath, JSON.stringify(userData, null, 2));
 
     res.status(201).json({ message: 'User registered successfully' });
@@ -99,7 +99,65 @@ app.get('/api/list', requireAuth, (req, res) => {
     res.json(userData.list);
 });
 
-// --- End of User Authentication ---
+// Load a specific user's list (public)
+app.get('/api/list/:username', (req, res) => {
+    const { username } = req.params;
+    const userFilePath = getUserFilePath(username);
+
+    if (!fs.existsSync(userFilePath)) {
+        return res.status(404).json({ message: 'User not found' });
+    }
+
+    const userData = JSON.parse(fs.readFileSync(userFilePath, 'utf8'));
+    res.json(userData.list || []);
+});
+
+// Add a friend
+app.post('/api/friends/add', requireAuth, (req, res) => {
+    const { friendUsername } = req.body;
+    const currentUser = req.user.username;
+
+    if (!friendUsername) {
+        return res.status(400).json({ message: 'Friend username is required' });
+    }
+
+    if (friendUsername === currentUser) {
+        return res.status(400).json({ message: 'You cannot add yourself as a friend' });
+    }
+
+    const friendFilePath = getUserFilePath(friendUsername);
+    if (!fs.existsSync(friendFilePath)) {
+        return res.status(404).json({ message: 'User to be added not found' });
+    }
+    
+    const currentUserFilePath = getUserFilePath(currentUser);
+    const currentUserData = JSON.parse(fs.readFileSync(currentUserFilePath, 'utf8'));
+
+    if (!currentUserData.friends) {
+        currentUserData.friends = [];
+    }
+
+    if (currentUserData.friends.includes(friendUsername)) {
+        return res.status(409).json({ message: 'This user is already your friend' });
+    }
+
+    currentUserData.friends.push(friendUsername);
+    fs.writeFileSync(currentUserFilePath, JSON.stringify(currentUserData, null, 2));
+
+    res.status(200).json({ message: `Successfully added ${friendUsername} as a friend` });
+});
+
+// Get friends list
+app.get('/api/friends', requireAuth, (req, res) => {
+    const currentUser = req.user.username;
+    const currentUserFilePath = getUserFilePath(currentUser);
+    const currentUserData = JSON.parse(fs.readFileSync(currentUserFilePath, 'utf8'));
+    
+    res.json(currentUserData.friends || []);
+});
+
+
+// --- End of User Management ---
 
 // Get app version from package.json
 let appVersion = 'unknown';

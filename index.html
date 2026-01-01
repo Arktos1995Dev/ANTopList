@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Визуализация Excel документа</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>📊 Визуализация Excel документа</h1>
+            <p class="subtitle">Загрузите ваш Excel файл для красивой визуализации</p>
+        </header>
+
+        <div class="upload-section">
+            <div class="upload-box" id="uploadBox">
+                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <p class="upload-text">Перетащите файл сюда или <span class="upload-link">выберите файл</span></p>
+                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+                <p class="upload-hint">Поддерживаются файлы .xlsx и .xls</p>
+            </div>
+        </div>
+
+        <div class="controls-section" id="controlsSection" style="display: none;">
+            <div class="sheet-selector">
+                <label for="sheetSelect">Выберите лист:</label>
+                <select id="sheetSelect" class="sheet-select"></select>
+            </div>
+            <div class="view-toggle">
+                <button class="btn-toggle active" data-view="table">Таблица</button>
+                <button class="btn-toggle" data-view="cards">Карточки</button>
+            </div>
+            <div class="image-controls" id="imageControls" style="display: none;">
+                <button id="loadImagesBtn" class="btn-load-images">
+                    <span class="btn-icon">🖼️</span>
+                    <span class="btn-text">Загрузить изображения</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="genre-hint" id="genreHint" style="display: none;">
+            <span class="hint-icon">🎨</span>
+            <span class="hint-text">Строки выделены цветом на основе жанра из колонки "genre"</span>
+        </div>
+
+        <div class="data-section" id="dataSection" style="display: none;">
+            <div id="tableView" class="view-container">
+                <div class="table-wrapper">
+                    <table id="dataTable" class="data-table"></table>
+                </div>
+            </div>
+            <div id="cardsView" class="view-container" style="display: none;">
+                <div id="cardsContainer" class="cards-container"></div>
+            </div>
+        </div>
+
+        <div class="info-section" id="infoSection" style="display: none;">
+            <div class="info-card">
+                <div class="info-item">
+                    <span class="info-label">Листов:</span>
+                    <span class="info-value" id="sheetCount">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Строк:</span>
+                    <span class="info-value" id="rowCount">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Столбцов:</span>
+                    <span class="info-value" id="colCount">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+

@@ -22,7 +22,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
-// In-memory session store (for simplicity, replace with a proper session store in production)
+// In-memory session store
 const sessions = {};
 
 // Registration
@@ -60,24 +60,26 @@ app.post('/api/login', async (req, res) => {
     }
 
     try {
-        const { data: users, error } = await supabase
+        // Fetch user by username
+        const { data: user, error } = await supabase
             .from('users')
-            .select('*')
-            .eq('username', username);
+            .select('id, username, password') // Select id as well
+            .eq('username', username)
+            .single();
 
-        if (error || !users || users.length === 0) {
+        if (error || !user) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        const user = users[0];
         const isMatch = await bcrypt.compare(password, user.password);
 
         if (!isMatch) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        // Create a session token and store user id and username
         const sessionId = Buffer.from(username).toString('base64');
-        sessions[sessionId] = { username: user.username };
+        sessions[sessionId] = { id: user.id, username: user.username };
 
         res.json({ message: 'Login successful', token: sessionId });
     } catch (error) {
@@ -86,15 +88,18 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+
 // Middleware to check for authentication
 const requireAuth = (req, res, next) => {
     const token = req.headers.authorization;
     if (!token || !sessions[token]) {
         return res.status(401).json({ message: 'Unauthorized' });
     }
+    // Attach user info (id and username) to the request
     req.user = sessions[token];
     next();
 };
+
 
 // Save list
 app.post('/api/list', requireAuth, async (req, res) => {
@@ -103,7 +108,7 @@ app.post('/api/list', requireAuth, async (req, res) => {
         const { error } = await supabase
             .from('users')
             .update({ list: list })
-            .eq('username', req.user.username);
+            .eq('id', req.user.id); // Use id for update
 
         if (error) throw error;
         res.json({ message: 'List saved successfully' });
@@ -113,89 +118,100 @@ app.post('/api/list', requireAuth, async (req, res) => {
     }
 });
 
-// Load list
+// Load own list
 app.get('/api/list', requireAuth, async (req, res) => {
     try {
-        const { data: users, error } = await supabase
+        const { data: user, error } = await supabase
             .from('users')
             .select('list')
-            .eq('username', req.user.username);
+            .eq('id', req.user.id) // Use id to fetch list
+            .single();
 
         if (error) throw error;
-        res.json(users[0]?.list || []);
+        res.json(user?.list || []);
     } catch (error) {
         console.error('Load list error:', error);
         res.status(500).json({ message: 'Internal server error while loading list' });
     }
 });
 
+
 // Load a specific user's list (public)
 app.get('/api/list/:username', async (req, res) => {
     const { username } = req.params;
     try {
-        const { data: users, error } = await supabase
+        const { data: user, error } = await supabase
             .from('users')
             .select('list')
-            .eq('username', username);
+            .eq('username', username)
+            .single();
         
-        if (error) throw error;
-
-        if (!users || users.length === 0) {
+        if (error || !user) {
             return res.status(404).json({ message: 'User not found' });
         }
-        res.json(users[0].list || []);
+        res.json(user.list || []);
     } catch (error) {
         console.error('Load user list error:', error);
         res.status(500).json({ message: 'Internal server error while loading user list' });
     }
 });
 
-// Add a friend
+// --- New Friend Endpoints (3NF) ---
+
+// Add a friend (using the new 'friendships' table)
 app.post('/api/friends/add', requireAuth, async (req, res) => {
     const { friendUsername } = req.body;
-    const currentUser = req.user.username;
+    const currentUserId = req.user.id;
+    const currentUsername = req.user.username;
 
     if (!friendUsername) {
         return res.status(400).json({ message: 'Friend username is required' });
     }
 
-    if (friendUsername === currentUser) {
+    if (friendUsername === currentUsername) {
         return res.status(400).json({ message: 'You cannot add yourself as a friend' });
     }
 
     try {
+        // 1. Find the friend's user data
         const { data: friend, error: friendError } = await supabase
             .from('users')
-            .select('username')
+            .select('id')
             .eq('username', friendUsername)
             .single();
 
         if (friendError || !friend) {
             return res.status(404).json({ message: 'User to be added not found' });
         }
+        const friendId = friend.id;
 
-        const { data: currentUserData, error: currentUserError } = await supabase
-            .from('users')
-            .select('friends')
-            .eq('username', currentUser)
-            .single();
-        
-        if (currentUserError) throw currentUserError;
+        // 2. Check if the friendship already exists
+        const { data: existingFriendship, error: checkError } = await supabase
+            .from('friendships')
+            .select('*')
+            .or(`(user_id.eq.${currentUserId},friend_id.eq.${friendId}),(user_id.eq.${friendId},friend_id.eq.${currentUserId})`);
 
-        const friends = currentUserData.friends || [];
+        if (checkError) throw checkError;
 
-        if (friends.includes(friendUsername)) {
+        if (existingFriendship && existingFriendship.length > 0) {
             return res.status(409).json({ message: 'This user is already your friend' });
         }
 
-        friends.push(friendUsername);
+        // 3. Create the friendship (both ways for easier lookup)
+        const { error: insertError } = await supabase
+            .from('friendships')
+            .insert([
+                { user_id: currentUserId, friend_id: friendId },
+                { user_id: friendId, friend_id: currentUserId } // Mutual friendship
+            ]);
 
-        const { error: updateError } = await supabase
-            .from('users')
-            .update({ friends: friends })
-            .eq('username', currentUser);
-
-        if (updateError) throw updateError;
+        if (insertError) {
+            // Handle potential race conditions or other db errors
+            if (insertError.code === '23505') { // unique_violation
+                 return res.status(409).json({ message: 'This user is already your friend' });
+            }
+            throw insertError;
+        }
 
         res.status(200).json({ message: `Successfully added ${friendUsername} as a friend` });
     } catch (error) {
@@ -204,22 +220,29 @@ app.post('/api/friends/add', requireAuth, async (req, res) => {
     }
 });
 
-// Get friends list
+// Get friends list (from the new 'friendships' table)
 app.get('/api/friends', requireAuth, async (req, res) => {
+    const currentUserId = req.user.id;
     try {
-        const { data: users, error } = await supabase
-            .from('users')
-            .select('friends')
-            .eq('username', req.user.username);
+        // Perform a join query
+        const { data, error } = await supabase
+            .from('friendships')
+            .select('friend:users!friendships_friend_id_fkey(username)')
+            .eq('user_id', currentUserId);
 
         if (error) throw error;
 
-        res.json(users[0]?.friends || []);
+        const friendsUsernames = data.map(item => item.friend.username);
+        res.json(friendsUsernames);
+
     } catch (error) {
         console.error('Get friends error:', error);
-        res.status(500).json({ message: 'Internal server error while getting friends' });
+        res.status(500).json({ message: 'Internal server error while getting friends list' });
     }
 });
+
+
+// --- End New Friend Endpoints ---
 
 
 // Get app version from package.json

@@ -9,18 +9,21 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 </head>
 <body>
+    <div class="top-bar">
+        <div class="auth-section">
+            <button id="loginBtn">Войти</button>
+            <button id="registerBtn">Регистрация</button>
+            <div id="userInfo" style="display: none;">
+                <a href="#" id="profileLink"></a>
+                <button id="logoutBtn">Выйти</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <header class="header">
             <h1>📊 Anime List</h1>
             <p class="subtitle">Загрузите ваш Excel или xml файл</p>
-            <div class="auth-section">
-                <button id="loginBtn">Войти</button>
-                <button id="registerBtn">Регистрация</button>
-                <div id="userInfo" style="display: none;">
-                    <a href="#" id="profileLink"></a>
-                    <button id="logoutBtn">Выйти</button>
-                </div>
-            </div>
         </header>
 
         <div class="user-actions-section" id="userActionsSection" style="display: none;">

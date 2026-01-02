@@ -164,6 +164,7 @@ function updateUIForAuth(username) {
     userInfo.style.display = 'flex';
     profileLink.textContent = username;
     saveListBtn.style.display = 'block';
+    uploadNewBtn.style.display = 'block'; // Show Upload New button
 }
 
 function updateUIForGuest() {
@@ -172,6 +173,7 @@ function updateUIForGuest() {
     userInfo.style.display = 'none';
     profileLink.textContent = '';
     saveListBtn.style.display = 'none';
+    uploadNewBtn.style.display = 'none'; // Hide Upload New button
 }
 
 async function loadUserList() {
@@ -182,6 +184,15 @@ async function loadUserList() {
         const response = await fetch('/api/list', {
             headers: { 'Authorization': token }
         });
+        if (response.status === 401) {
+            // If unauthorized, clear local storage and update UI
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            updateUIForGuest();
+            alert('Your session has expired. Please log in again.');
+            return;
+        }
+
         if (response.ok) {
             const listData = await response.json();
             if (listData && listData.length > 0) {
@@ -197,6 +208,7 @@ async function loadUserList() {
                 dataSection.style.display = 'block';
                 infoSection.style.display = 'block';
                 uploadBox.style.display = 'none';
+                uploadNewBtn.style.display = 'block';
 
                 updateInfo();
                 renderData();
@@ -247,6 +259,7 @@ const colCountEl = document.getElementById('colCount');
 const genreHint = document.getElementById('genreHint');
 const loadingIndicator = document.getElementById('loadingIndicator');
 const hideImagesButton = document.getElementById('hideImagesButton');
+const uploadNewBtn = document.getElementById('uploadNewBtn');
 
 
 uploadBox.addEventListener('click', () => fileInput.click());
@@ -254,6 +267,21 @@ uploadBox.addEventListener('dragover', (e) => { e.preventDefault(); uploadBox.cl
 uploadBox.addEventListener('dragleave', (e) => { e.preventDefault(); uploadBox.classList.remove('dragover'); });
 uploadBox.addEventListener('drop', handleDrop);
 fileInput.addEventListener('change', handleFileSelect);
+
+uploadNewBtn.addEventListener('click', () => {
+    // Reset UI to initial state
+    controlsSection.style.display = 'none';
+    dataSection.style.display = 'none';
+    infoSection.style.display = 'none';
+    uploadBox.style.display = 'flex';
+    uploadNewBtn.style.display = 'none';
+    dataTable.innerHTML = '';
+    cardsContainer.innerHTML = '';
+    sheetSelect.innerHTML = '';
+    workbook = null;
+    currentSheetName = null;
+    localImageMapping = {};
+});
 
 hideImagesButton.addEventListener('click', () => {
     imagesHidden = !imagesHidden;
@@ -321,6 +349,7 @@ function processExcelFile(file) {
             dataSection.style.display = 'block';
             infoSection.style.display = 'block';
             uploadBox.style.display = 'none';
+            uploadNewBtn.style.display = 'block'; // Show after processing
             
             updateInfo();
             renderData();
@@ -371,6 +400,7 @@ function processXmlFile(file) {
         dataSection.style.display = 'block';
         infoSection.style.display = 'block';
         uploadBox.style.display = 'none';
+        uploadNewBtn.style.display = 'block'; // Show after processing
 
         updateInfo();
         renderData();

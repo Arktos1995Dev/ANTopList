@@ -112,13 +112,14 @@ async function processAndDownloadImages(supabase, animeTitles) {
 
         const { data: existingImage, error: selectError } = await supabase
             .from('images')
-            .select('mal_id')
+            .select('mal_id, image_data') // Also select image_data to check for existence
             .eq('mal_id', mal_id)
             .single();
 
-        if (existingImage) {
+        // If image exists and has data, skip.
+        if (existingImage && existingImage.image_data) { 
             downloadedImages[animeTitle] = mal_id;
-            console.log(`Found in DB: ${mal_id}`);
+            console.log(`Found in DB with image data: ${mal_id}`);
             continue;
         }
 
@@ -128,15 +129,18 @@ async function processAndDownloadImages(supabase, animeTitles) {
         }
 
         try {
-            const imageData = await downloadFile(imageUrl);
+            const imageData = await downloadFile(imageUrl); // Returns a Buffer
+            
+            // Convert buffer to base64 string for storing in bytea column
+            const imageBase64 = imageData.toString('base64');
 
             const { error: insertError } = await supabase
                 .from('images')
                 .insert({
                     mal_id: mal_id,
                     image_url: imageUrl,
-                    image_data: imageData
-                });
+                    image_data: imageBase64 // Save as base64 string
+                }, { upsert: true }); // Use upsert to avoid race conditions and update existing rows
 
             if (insertError) {
                 console.error(`Failed to insert DB record for \"${animeTitle}\": ${insertError.message}`);

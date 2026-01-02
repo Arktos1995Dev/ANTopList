@@ -22,9 +22,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
-// In-memory session store
-const sessions = {};
-
 // Registration
 app.post('/api/register', async (req, res) => {
     const { username, password } = req.body;
@@ -60,10 +57,9 @@ app.post('/api/login', async (req, res) => {
     }
 
     try {
-        // Fetch user by username
         const { data: user, error } = await supabase
             .from('users')
-            .select('id, username, password') // Select id as well
+            .select('id, username, password')
             .eq('username', username)
             .single();
 
@@ -77,27 +73,44 @@ app.post('/api/login', async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // Create a session token and store user id and username
-        const sessionId = Buffer.from(username).toString('base64');
-        sessions[sessionId] = { id: user.id, username: user.username };
+        const token = Buffer.from(username).toString('base64');
+        res.json({ message: 'Login successful', token: token });
 
-        res.json({ message: 'Login successful', token: sessionId });
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ message: 'Internal server error during login' });
     }
 });
 
-
-// Middleware to check for authentication
-const requireAuth = (req, res, next) => {
+// Middleware to check for authentication (stateless)
+const requireAuth = async (req, res, next) => {
     const token = req.headers.authorization;
-    if (!token || !sessions[token]) {
-        return res.status(401).json({ message: 'Unauthorized' });
+    if (!token) {
+        return res.status(401).json({ message: 'Unauthorized: No token provided' });
     }
-    // Attach user info (id and username) to the request
-    req.user = sessions[token];
-    next();
+
+    try {
+        const username = Buffer.from(token, 'base64').toString('utf-8');
+        if (!username) {
+            return res.status(401).json({ message: 'Unauthorized: Invalid token' });
+        }
+
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('id, username')
+            .eq('username', username)
+            .single();
+
+        if (error || !user) {
+            return res.status(401).json({ message: 'Unauthorized: User not found' });
+        }
+
+        req.user = user; // Attach user info {id, username}
+        next();
+    } catch (error) {
+        console.error('Auth error:', error);
+        return res.status(401).json({ message: 'Unauthorized: Invalid token format' });
+    }
 };
 
 

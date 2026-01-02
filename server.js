@@ -179,9 +179,10 @@ app.get('/api/image/:mal_id', async (req, res) => {
             .single();
 
         if (data && data.image_data) {
-            // Determine content type from URL, default to jpeg
-            const extension = path.extname(data.image_url).toLowerCase();
-            let contentType = 'image/jpeg';
+            // The Supabase client correctly decodes the bytea column into a Buffer.
+            // We just need to send this buffer directly.
+            const extension = path.extname(data.image_url || '').toLowerCase();
+            let contentType = 'image/jpeg'; // Default
             if (extension === '.png') {
                 contentType = 'image/png';
             } else if (extension === '.gif') {
@@ -190,7 +191,8 @@ app.get('/api/image/:mal_id', async (req, res) => {
                 contentType = 'image/webp';
             }
             res.setHeader('Content-Type', contentType);
-            res.send(Buffer.from(data.image_data, 'base64')); // Send the binary data
+            // Correct: Send the buffer directly without re-processing.
+            res.send(data.image_data);
         } else {
              if (error) {
                 console.error(`Error fetching image for mal_id ${mal_id}:`, error);

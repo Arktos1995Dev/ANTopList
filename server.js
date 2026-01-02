@@ -19,8 +19,13 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// --- Static Asset Serving ---
+// Serve files from the root directory (e.g., index.html, script.js)
 app.use(express.static(path.join(__dirname)));
+// Serve image files from the 'images' directory
 app.use('/images', express.static(path.join(__dirname, 'images')));
+// --- End Static Asset Serving ---
 
 // Registration
 app.post('/api/register', async (req, res) => {
@@ -166,41 +171,6 @@ app.get('/api/list/:username', async (req, res) => {
     } catch (error) {
         console.error('Load user list error:', error);
         res.status(500).json({ message: 'Internal server error while loading user list' });
-    }
-});
-
-app.get('/api/image/:mal_id', async (req, res) => {
-    const { mal_id } = req.params;
-    try {
-        const { data, error } = await supabase
-            .from('images')
-            .select('image_data, image_url')
-            .eq('mal_id', mal_id)
-            .single();
-
-        if (data && data.image_data) {
-            // The Supabase client correctly decodes the bytea column into a Buffer.
-            // We just need to send this buffer directly.
-            const extension = path.extname(data.image_url || '').toLowerCase();
-            let contentType = 'image/jpeg'; // Default
-            if (extension === '.png') {
-                contentType = 'image/png';
-            } else if (extension === '.gif') {
-                contentType = 'image/gif';
-            } else if (extension === '.webp') {
-                contentType = 'image/webp';
-            }
-            res.setHeader('Content-Type', contentType);
-            // Correct: Send the buffer directly without re-processing.
-            res.send(data.image_data);
-        } else {
-             if (error) {
-                console.error(`Error fetching image for mal_id ${mal_id}:`, error);
-            }
-            res.status(404).send('Not Found');
-        }
-    } catch (error) {
-        res.status(500).send('Internal Server Error');
     }
 });
 
@@ -381,7 +351,7 @@ app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'profile.html'));
 });
 
-// Serve the main HTML file for all other GET requests
+// Serve the main HTML file for all other GET requests that are not static assets
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });

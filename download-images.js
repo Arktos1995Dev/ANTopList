@@ -1,19 +1,12 @@
-const fs = require('fs');
-const path = require('path');
 const https = require('https');
 const http = require('http');
 
-const imagesDir = path.join(__dirname, 'images');
-if (!fs.existsSync(imagesDir)) {
-    fs.mkdirSync(imagesDir, { recursive: true });
-}
-
-function downloadFile(url, filepath) {
+function downloadFile(url) {
     return new Promise((resolve, reject) => {
         const protocol = url.startsWith('https') ? https : http;
         const request = protocol.get(url, (response) => {
             if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                downloadFile(response.headers.location, filepath).then(resolve).catch(reject);
+                downloadFile(response.headers.location).then(resolve).catch(reject);
                 return;
             }
             if (response.statusCode !== 200) {
@@ -26,12 +19,12 @@ function downloadFile(url, filepath) {
                 });
                 return;
             }
-            const fileStream = fs.createWriteStream(filepath);
-            response.pipe(fileStream);
-            fileStream.on('finish', () => fileStream.close(resolve));
-            fileStream.on('error', (err) => {
-                fs.unlink(filepath, () => {});
-                reject(err);
+            const chunks = [];
+            response.on('data', (chunk) => {
+                chunks.push(chunk);
+            });
+            response.on('end', () => {
+                resolve(Buffer.concat(chunks));
             });
         });
         request.on('error', reject);
@@ -73,7 +66,7 @@ function generateSearchAlternatives(title) {
     return Array.from(alternatives);
 }
 
-async function fetchAnimeImageWithAlternatives(animeTitle) {
+async function fetchAnimeDataWithAlternatives(animeTitle) {
     const alternatives = generateSearchAlternatives(animeTitle);
     for (const title of alternatives) {
         const searchUrl = `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(title)}&limit=1`;
@@ -90,80 +83,73 @@ async function fetchAnimeImageWithAlternatives(animeTitle) {
             if (data.data && data.data.length > 0) {
                 const imageUrl = getImageUrl(data.data[0]);
                 if (imageUrl) {
-                    if (title !== animeTitle) console.log(`Found via "${title}"`);
-                    return imageUrl;
+                    if (title !== animeTitle) console.log(`Found via \"${title}\"`);
+                    return data.data[0];
                 }
             }
         } catch (error) {
-            console.error(`API request error for "${title}": ${error.message}`);
+            console.error(`API request error for \"${title}\": ${error.message}`);
         }
     }
     return null;
 }
 
-function sanitizeFileName(name) {
-    return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_');
-}
-
 async function processAndDownloadImages(supabase, animeTitles) {
     console.log(`Starting download for ${animeTitles.length} unique anime titles.`);
-    const downloadedFiles = {};
-    
+    const downloadedImages = {};
+
     for (const animeTitle of animeTitles) {
-        console.log(`Processing: "${animeTitle}"...`);
+        console.log(`Processing: \"${animeTitle}\"...`);
+
+        const animeData = await fetchAnimeDataWithAlternatives(animeTitle);
+        if (!animeData) {
+            console.log(`Image not found for \"${animeTitle}\"`);
+            continue;
+        }
+
+        const mal_id = animeData.mal_id;
+        const imageUrl = getImageUrl(animeData);
 
         const { data: existingImage, error: selectError } = await supabase
             .from('images')
-            .select('filename')
-            .eq('title', animeTitle)
+            .select('mal_id')
+            .eq('mal_id', mal_id)
             .single();
 
-        if (selectError && selectError.code !== 'PGRST116') { // Ignore "0 rows" error
-            console.error(`Error checking DB for "${animeTitle}":`, selectError.message);
-            continue;
-        }
-        
         if (existingImage) {
-            downloadedFiles[animeTitle] = existingImage.filename;
-            console.log(`Found in DB: ${existingImage.filename}`);
+            downloadedImages[animeTitle] = mal_id;
+            console.log(`Found in DB: ${mal_id}`);
             continue;
         }
 
-        const imageUrl = await fetchAnimeImageWithAlternatives(animeTitle);
-        if (!imageUrl) {
-            console.log(`Image not found for "${animeTitle}"`);
+        if (selectError && selectError.code !== 'PGRST116') { // Ignore "0 rows" error
+            console.error(`Error checking DB for \"${animeTitle}\":`, selectError.message);
             continue;
         }
-
-        const safeName = sanitizeFileName(animeTitle);
-        const ext = path.extname(new URL(imageUrl).pathname) || '.jpg';
-        const filename = `${safeName}${ext}`;
-        const filepath = path.join(imagesDir, filename);
 
         try {
-            await downloadFile(imageUrl, filepath);
-            
+            const imageData = await downloadFile(imageUrl);
+
             const { error: insertError } = await supabase
                 .from('images')
-                .insert({ title: animeTitle, filename: filename });
+                .insert({
+                    mal_id: mal_id,
+                    image_url: imageUrl,
+                    image_data: imageData
+                });
 
             if (insertError) {
-                console.error(`Failed to insert DB record for "${animeTitle}": ${insertError.message}`);
+                console.error(`Failed to insert DB record for \"${animeTitle}\": ${insertError.message}`);
             }
 
-            downloadedFiles[animeTitle] = filename;
-            console.log(`Downloaded: ${filename}`);
+            downloadedImages[animeTitle] = mal_id;
+            console.log(`Downloaded and saved to DB: ${mal_id}`);
 
         } catch (error) {
-            console.error(`Failed to download file for "${animeTitle}" from ${imageUrl}: ${error.message}`);
+            console.error(`Failed to download file for \"${animeTitle}\" from ${imageUrl}: ${error.message}`);
         }
     }
-
-    if (Object.keys(downloadedFiles).length > 0) {
-        fs.writeFileSync(path.join(__dirname, 'image-mapping.json'), JSON.stringify(downloadedFiles, null, 2));
-        console.log('Image mapping file created.');
-    }
-    return downloadedFiles;
+    return downloadedImages;
 }
 
 module.exports = { processAndDownloadImages };

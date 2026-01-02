@@ -156,6 +156,39 @@ app.get('/api/list/:username', async (req, res) => {
     }
 });
 
+app.get('/api/image/:mal_id', async (req, res) => {
+    const { mal_id } = req.params;
+    try {
+        const { data, error } = await supabase
+            .from('images')
+            .select('image_data, image_url')
+            .eq('mal_id', mal_id)
+            .single();
+
+        if (data && data.image_data) {
+            // Determine content type from URL, default to jpeg
+            const extension = path.extname(data.image_url).toLowerCase();
+            let contentType = 'image/jpeg';
+            if (extension === '.png') {
+                contentType = 'image/png';
+            } else if (extension === '.gif') {
+                contentType = 'image/gif';
+            } else if (extension === '.webp') {
+                contentType = 'image/webp';
+            }
+            res.setHeader('Content-Type', contentType);
+            res.send(Buffer.from(data.image_data, 'base64')); // Send the binary data
+        } else {
+             if (error) {
+                console.error(`Error fetching image for mal_id ${mal_id}:`, error);
+            }
+            res.status(404).send('Not Found');
+        }
+    } catch (error) {
+        res.status(500).send('Internal Server Error');
+    }
+});
+
 // --- New Friend Endpoints (3NF) ---
 
 // Add a friend (using the new 'friendships' table)
@@ -241,6 +274,57 @@ app.get('/api/friends', requireAuth, async (req, res) => {
     }
 });
 
+// Get user profile (username and friends)
+app.get('/api/profile', requireAuth, async (req, res) => {
+    const currentUserId = req.user.id;
+    const currentUsername = req.user.username;
+
+    try {
+        // Fetch friends' usernames
+        const { data, error } = await supabase
+            .from('friendships')
+            .select('friend:users!friendships_friend_id_fkey(username)')
+            .eq('user_id', currentUserId);
+
+        if (error) throw error;
+
+        const friendsUsernames = data.map(item => item.friend.username);
+        
+        res.json({
+            username: currentUsername,
+            friends: friendsUsernames
+        });
+
+    } catch (error) {
+        console.error('Get profile error:', error);
+        res.status(500).json({ message: 'Internal server error while getting profile' });
+    }
+});
+
+// Search for users
+app.get('/api/users/search', async (req, res) => {
+    const { username } = req.query;
+
+    if (!username) {
+        return res.status(400).json({ message: 'Username query parameter is required' });
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('users')
+            .select('username')
+            .ilike('username', `%${username}%`); // Case-insensitive search
+
+        if (error) throw error;
+
+        res.json(data);
+    } catch (error) {
+        console.error('User search error:', error);
+        res.status(500).json({ message: 'Internal server error during user search' });
+    }
+});
+
+
 
 // --- End New Friend Endpoints ---
 
@@ -273,7 +357,16 @@ app.post('/download-images', async (req, res) => {
     }
 });
 
-// Serve the main HTML file
+// Route for profile pages, serves index.html
+app.get('/профиль/:username', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/profile', (req, res) => {
+    res.sendFile(path.join(__dirname, 'profile.html'));
+});
+
+// Serve the main HTML file for all other GET requests
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });

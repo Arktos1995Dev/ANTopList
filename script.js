@@ -118,7 +118,7 @@ logoutBtn.addEventListener('click', () => {
 
 profileLink.addEventListener('click', (e) => {
     e.preventDefault();
-    loadUserList();
+    window.location.href = 'profile.html';
 });
 
 saveListBtn.addEventListener('click', async () => {
@@ -541,10 +541,10 @@ async function renderTableView() {
 
         if (animeColumnIndex >= 0) {
             const animeTitle = row[animeColumnIndex] || '';
-            const imageName = localImageMapping[animeTitle.trim()];
+            const mal_id = localImageMapping[animeTitle.trim()];
             html += `<td class="anime-image-cell image-col">`;
-            if (imageName) {
-                html += `<img src="images/${escapeHtml(imageName)}" alt="${escapeHtml(animeTitle)}" class="anime-image" loading="lazy">`;
+            if (mal_id) {
+                html += `<img src="/api/image/${escapeHtml(mal_id)}" alt="${escapeHtml(animeTitle)}" class="anime-image" loading="lazy">`;
             }
             html += `</td>`;
         }
@@ -590,9 +590,9 @@ async function renderCardsView() {
         html += '<span class="drag-handle">&#9776;</span>';
         
         const animeTitle = animeColumnIndex >= 0 ? (row[animeColumnIndex] || '') : '';
-        const imageName = localImageMapping[animeTitle.trim()];
-        if (imageName) {
-            html += `<div class="card-image-wrapper"><img src="images/${escapeHtml(imageName)}" alt="${escapeHtml(animeTitle)}" class="card-anime-image" loading="lazy"></div>`;
+        const mal_id = localImageMapping[animeTitle.trim()];
+        if (mal_id) {
+            html += `<div class="card-image-wrapper"><img src="/api/image/${escapeHtml(mal_id)}" alt="${escapeHtml(animeTitle)}" class="card-anime-image" loading="lazy"></div>`;
         }
 
         headers.forEach((header, colIndex) => {

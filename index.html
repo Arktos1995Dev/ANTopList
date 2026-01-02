@@ -14,93 +14,82 @@
             <button id="loginBtn">Войти</button>
             <button id="registerBtn">Регистрация</button>
             <div id="userInfo" style="display: none;">
-                <a href="#" id="profileLink"></a>
+                <a href="profile.html" id="profileLink"></a>
                 <button id="logoutBtn">Выйти</button>
             </div>
         </div>
     </div>
 
     <div class="container">
-        <header class="header">
-            <h1>📊 Anime List</h1>
-            <p class="subtitle">Загрузите ваш Excel или xml файл</p>
-        </header>
+        <div id="mainContent">
+            <header class="header">
+                <h1>📊 Anime List</h1>
+                <p class="subtitle">Загрузите ваш Excel или xml файл</p>
+            </header>
 
-        <div class="user-actions-section" id="userActionsSection" style="display: none;">
-            <div class="friends-list-section">
-                <h3>Друзья</h3>
-                <ul id="friendsList"></ul>
-                <div class="add-friend-form">
-                    <input type="text" id="addFriendInput" placeholder="Имя пользователя">
-                    <button id="addFriendBtn">Добавить в друзья</button>
+            <div class="upload-section">
+                <div class="upload-box" id="uploadBox">
+                     <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Загрузка изображений...</p>
+                    </div>
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <p class="upload-text">Перетащите файл сюда или <span class="upload-link">выберите файл</span></p>
+                    <input type="file" id="fileInput" accept=".xlsx,.xls,.xml" style="display: none;">
+                    <p class="upload-hint">Поддерживаются файлы .xlsx, .xls и .xml</p>
                 </div>
             </div>
-            <div class="view-user-list-section">
-                <h3>Посмотреть список пользователя</h3>
-                <input type="text" id="viewUserInput" placeholder="Имя пользователя">
-                <button id="viewUserListBtn">Посмотреть</button>
-            </div>
-        </div>
 
-        <div class="upload-section">
-            <div class="upload-box" id="uploadBox">
-                 <div id="loadingIndicator" class="loading-indicator" style="display: none;">
-                    <div class="spinner"></div>
-                    <p>Загрузка изображений...</p>
+            <h2 id="currentListViewTitle"></h2>
+
+            <div class="controls-section" id="controlsSection" style="display: none;">
+                <div class="sheet-selector">
+                    <label for="sheetSelect">Выберите лист:</label>
+                    <select id="sheetSelect" class="sheet-select"></select>
                 </div>
-                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                <p class="upload-text">Перетащите файл сюда или <span class="upload-link">выберите файл</span></p>
-                <input type="file" id="fileInput" accept=".xlsx,.xls,.xml" style="display: none;">
-                <p class="upload-hint">Поддерживаются файлы .xlsx, .xls и .xml</p>
+                <div class="view-toggle">
+                    <button class="btn-toggle active" data-view="table">Таблица</button>
+                    <button class="btn-toggle" data-view="cards">Карточки</button>
+                </div>
+                <button id="hideImagesButton" class="btn-toggle">Hide Images</button> 
+                <button id="saveListBtn" class="btn-toggle" style="display: none;">Сохранить список</button>
+                <button id="shareProfileBtn" class="btn-toggle" style="display: none;">Поделиться профилем</button>
             </div>
-        </div>
 
-        <div class="controls-section" id="controlsSection" style="display: none;">
-            <div class="sheet-selector">
-                <label for="sheetSelect">Выберите лист:</label>
-                <select id="sheetSelect" class="sheet-select"></select>
+            <div class="genre-hint" id="genreHint" style="display: none;">
+                <span class="hint-icon">🎨</span>
+                <span class="hint-text">Строки выделены цветом на основе жанра из колонки "genre"</span>
             </div>
-            <div class="view-toggle">
-                <button class="btn-toggle active" data-view="table">Таблица</button>
-                <button class="btn-toggle" data-view="cards">Карточки</button>
-            </div>
-            <button id="hideImagesButton" class="btn-toggle">Hide Images</button> 
-            <button id="saveListBtn" class="btn-toggle" style="display: none;">Сохранить список</button>
-        </div>
 
-        <div class="genre-hint" id="genreHint" style="display: none;">
-            <span class="hint-icon">🎨</span>
-            <span class="hint-text">Строки выделены цветом на основе жанра из колонки "genre"</span>
-        </div>
-
-        <div class="data-section" id="dataSection" style="display: none;">
-            <div id="tableView" class="view-container">
-                <div class="table-wrapper">
-                    <table id="dataTable" class="data-table"></table>
+            <div class="data-section" id="dataSection" style="display: none;">
+                <div id="tableView" class="view-container">
+                    <div class="table-wrapper">
+                        <table id="dataTable" class="data-table"></table>
+                    </div>
+                </div>
+                <div id="cardsView" class="view-container" style="display: none;">
+                    <div id="cardsContainer" class="cards-container"></div>
                 </div>
             </div>
-            <div id="cardsView" class="view-container" style="display: none;">
-                <div id="cardsContainer" class="cards-container"></div>
-            </div>
-        </div>
 
-        <div class="info-section" id="infoSection" style="display: none;">
-            <div class="info-card">
-                <div class="info-item">
-                    <span class="info-label">Листов:</span>
-                    <span class="info-value" id="sheetCount">0</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Строк:</span>
-                    <span class="info-value" id="rowCount">0</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Столбцов:</span>
-                    <span class="info-value" id="colCount">0</span>
+            <div class="info-section" id="infoSection" style="display: none;">
+                <div class="info-card">
+                    <div class="info-item">
+                        <span class="info-label">Листов:</span>
+                        <span class="info-value" id="sheetCount">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Строк:</span>
+                        <span class="info-value" id="rowCount">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Столбцов:</span>
+                        <span class="info-value" id="colCount">0</span>
+                    </div>
                 </div>
             </div>
         </div>

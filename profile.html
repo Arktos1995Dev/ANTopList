@@ -1,0 +1,49 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профиль</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="top-bar">
+        <div class="auth-section">
+            <button id="loginBtn">Войти</button>
+            <button id="registerBtn">Регистрация</button>
+            <div id="userInfo" style="display: none;">
+                <a href="index.html">Главная</a>
+                <a href="#" id="profileLink"></a>
+                <button id="logoutBtn">Выйти</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="profilePage">
+            <h2>Профиль</h2>
+            <div id="profileContent"></div>
+            <h3>Друзья</h3>
+            <ul id="friendsList"></ul>
+            <div class="add-friend-form">
+                <input type="text" id="addFriendInput" placeholder="Имя пользователя">
+                <button id="addFriendBtn">Добавить в друзья</button>
+            </div>
+            <div class="view-user-list-section">
+                <h3>Посмотреть список пользователя</h3>
+                <input type="text" id="viewUserInput" placeholder="Имя пользователя">
+                <button id="viewUserListBtn">Посмотреть</button>
+            </div>
+            <div class="find-friends-section">
+                <h3>Найти друзей</h3>
+                <input type="text" id="findFriendInput" placeholder="Имя пользователя">
+                <button id="findFriendBtn">Найти</button>
+                <div id="searchResults"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="profile.js"></script>
+</body>
+</html>
